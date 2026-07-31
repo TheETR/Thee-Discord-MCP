@@ -1,6 +1,6 @@
 # TheeDiscordMCP
 
-A local MCP server that lets Codex inspect and operate an allowlisted Discord guild through Discord's official REST API. It is designed for real server administration: broad coverage, predictable dry-runs, local state tracking, audit reasons, and strong boundaries around destructive actions.
+A local MCP server for inspecting and managing an allowlisted Discord server through Discord's official REST API. It covers day-to-day administration, dry-run planning, local resource tracking, audit reasons, and explicit safeguards around high-impact actions.
 
 ## What it manages
 
@@ -45,7 +45,7 @@ For the full tool set, the bot may need:
 Requires Node.js 20.19 or newer and pnpm.
 
 ```powershell
-cd D:\Dev\TheeDiscordMCP
+cd TheeDiscordMCP
 pnpm install
 Copy-Item .env.example .env
 ```
@@ -58,7 +58,7 @@ DISCORD_ALLOWED_GUILD_IDS=123456789012345678
 DISCORD_MODE=read-only
 ```
 
-Do not send the token through chat. To copy a Discord server ID, enable Developer Mode in Discord, right-click the server, and choose **Copy Server ID**.
+Do not paste the token into messages, issue reports, or committed files. To copy a Discord server ID, enable Developer Mode in Discord, right-click the server, and choose **Copy Server ID**.
 
 Build and verify:
 
@@ -66,28 +66,26 @@ Build and verify:
 pnpm check
 ```
 
-## 3. Connect Codex
+## 3. Connect an MCP client
 
-Add the following to the Codex MCP configuration (an editable copy is included as `mcp.config.example.toml`):
+Add the server to your MCP client configuration. An editable example is included as `mcp.config.example.toml`:
 
 ```toml
 [mcp_servers.thee-discord]
 command = "node"
-args = ["D:/Dev/TheeDiscordMCP/dist/index.js"]
-cwd = "D:/Dev/TheeDiscordMCP"
+args = ["C:/path/to/TheeDiscordMCP/dist/index.js"]
+cwd = "C:/path/to/TheeDiscordMCP"
 startup_timeout_sec = 20
 tool_timeout_sec = 120
 ```
 
-Restart Codex, then begin with a read-only request:
+Restart the client and export a snapshot before making changes. Review the channels, roles, forums, and permission overwrites while the server is still in `read-only` mode.
 
-> Export a snapshot of my allowlisted Discord server and review its channels, roles, forums, and permission overwrites. Do not change anything.
-
-When the snapshot looks correct, set `DISCORD_MODE=safe-write`, restart the MCP server, and apply ordinary changes. Keep destructive mode disabled until a specific deletion or moderation action is needed.
+Once the snapshot looks right, set `DISCORD_MODE=safe-write`, restart the MCP server, and apply ordinary changes. Keep destructive mode disabled until a specific deletion or moderation action is needed.
 
 ## Blueprint workflow
 
-`examples/elalem.blueprint.json` is a polished English-first ELALEM support/community blueprint. It includes restrained category styling, a human-sounding welcome message, two forum templates, tags, staff privacy, and sensible channel names.
+`examples/elalem.blueprint.json` provides an English ELALEM support and community layout with restrained category styling, a welcome message, two forum templates, tags, staff privacy, and practical channel names.
 
 Recommended flow:
 
