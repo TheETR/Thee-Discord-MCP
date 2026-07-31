@@ -131,7 +131,6 @@
       "forumTags": [
         { "name": "Help" },
         { "name": "Music" },
-        { "name": "AI" },
         { "name": "Economy" },
         { "name": "Fishing" },
         { "name": "Moderation" },
@@ -156,7 +155,6 @@
         { "name": "Command" },
         { "name": "UI / UX" },
         { "name": "Music" },
-        { "name": "AI" },
         { "name": "Economy" },
         { "name": "Fishing" },
         { "name": "Moderation" },
