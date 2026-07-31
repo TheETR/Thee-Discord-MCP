@@ -394,6 +394,54 @@ export function registerTools(args: {
   );
 
   server.registerTool(
+    "discord_current_bot_profile",
+    {
+      description: "Read or modify this operator bot's username, avatar, and banner. Image fields accept Discord data URIs.",
+      inputSchema: {
+        action: z.enum(["get", "modify"]),
+        body: JsonObject.default({}),
+        reason: z.string().max(400).optional(),
+        dryRun: DryRun
+      }
+    },
+    async ({ action, body, reason, dryRun }) => {
+      if (action === "get") return jsonResult(await client.request("GET", "/users/@me"));
+      const safeBody = {
+        ...body,
+        avatar: body.avatar ? "<redacted image data>" : undefined,
+        banner: body.banner ? "<redacted image data>" : undefined
+      };
+      if (dryRun) return jsonResult({ dryRun: true, action, body: safeBody });
+      client.policy.assertWrite({ operation: "modify current bot profile" });
+      return jsonResult(await client.request("PATCH", "/users/@me", { body, reason }));
+    }
+  );
+
+  server.registerTool(
+    "discord_current_application",
+    {
+      description: "Read or modify the current Discord application profile and installation metadata.",
+      inputSchema: {
+        action: z.enum(["get", "modify"]),
+        body: JsonObject.default({}),
+        reason: z.string().max(400).optional(),
+        dryRun: DryRun
+      }
+    },
+    async ({ action, body, reason, dryRun }) => {
+      if (action === "get") return jsonResult(await client.request("GET", "/oauth2/applications/@me"));
+      const safeBody = {
+        ...body,
+        icon: body.icon ? "<redacted image data>" : undefined,
+        cover_image: body.cover_image ? "<redacted image data>" : undefined
+      };
+      if (dryRun) return jsonResult({ dryRun: true, action, body: safeBody });
+      client.policy.assertWrite({ operation: "modify current application" });
+      return jsonResult(await client.request("PATCH", "/applications/@me", { body, reason }));
+    }
+  );
+
+  server.registerTool(
     "discord_modify_guild",
     {
       description: "Modify guild-level settings such as name, description, locale, verification, rules channel, and safety channels.",
@@ -573,7 +621,7 @@ export function registerTools(args: {
   server.registerTool(
     "discord_raw_guild_request",
     {
-      description: "Advanced escape hatch for Discord REST endpoints not covered above. Routes are restricted to the allowed guild or its channels.",
+      description: "Advanced escape hatch for Discord REST endpoints not covered above. Routes are restricted to the allowed guild, verified channels, webhooks, invites, stage instances, and this bot's guild commands.",
       inputSchema: {
         guildId: Snowflake,
         method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]),
@@ -585,7 +633,7 @@ export function registerTools(args: {
       }
     },
     async ({ guildId, method, route, body, reason, confirm, dryRun }) => {
-      await client.assertScopedRoute(guildId, route);
+      await client.assertScopedRoute(guildId, route, method, body);
       const isWrite = method !== "GET";
       const expected = `RAW ${method} ${route}`;
       if (isWrite && dryRun) {

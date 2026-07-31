@@ -23,8 +23,8 @@ const client = new Client({ name: "thee-discord-mcp-smoke", version: "1.0.0" });
 try {
   await client.connect(transport);
   const { tools } = await client.listTools();
-  if (tools.length !== 25) {
-    throw new Error(`Expected 25 MCP tools, received ${tools.length}.`);
+  if (tools.length !== 27) {
+    throw new Error(`Expected 27 MCP tools, received ${tools.length}.`);
   }
   console.log(`MCP handshake passed; ${tools.length} tools discovered.`);
 } finally {

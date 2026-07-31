@@ -11,9 +11,10 @@ A local MCP server that lets Codex inspect and operate an allowlisted Discord gu
 - Members: list/search, timeout, kick, ban, and unban
 - AutoMod rules, onboarding, welcome screen, emojis, and audit-log reads
 - Idempotent JSON blueprints with a dry-run planner
-- A tightly scoped raw REST escape hatch for new Discord endpoints
+- Bot and application profile management, including avatar and banner data URIs
+- A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
-There are 25 MCP tools. Every call is limited to guild IDs in the local allowlist. The raw escape hatch accepts only routes under an allowed guild or one of its verified channels.
+There are 27 MCP tools. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
 
 ## Safety modes
 

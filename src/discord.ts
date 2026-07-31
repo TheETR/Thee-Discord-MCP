@@ -51,17 +51,56 @@ export class DiscordClient {
     }
   }
 
-  async assertScopedRoute(guildId: string, route: string): Promise<void> {
+  async assertScopedRoute(guildId: string, route: string, method: Method = "GET", body?: unknown): Promise<void> {
     this.policy.assertGuild(guildId);
     const normalized = route.startsWith("/") ? route : `/${route}`;
-    if (normalized === `/guilds/${guildId}` || normalized.startsWith(`/guilds/${guildId}/`)) return;
+    const pathname = normalized.split("?", 1)[0] ?? normalized;
+    if (pathname === `/guilds/${guildId}` || pathname.startsWith(`/guilds/${guildId}/`)) return;
 
-    const channelMatch = normalized.match(/^\/channels\/(\d{17,20})(?:\/|$)/);
+    const channelMatch = pathname.match(/^\/channels\/(\d{17,20})(?:\/|$)/);
     if (channelMatch?.[1]) {
       await this.assertChannelGuild(channelMatch[1], guildId);
       return;
     }
 
-    throw new Error("Raw routes must be scoped to the selected guild or one of its channels.");
+    const stageMatch = pathname.match(/^\/stage-instances\/(\d{17,20})$/);
+    if (stageMatch?.[1]) {
+      await this.assertChannelGuild(stageMatch[1], guildId);
+      return;
+    }
+
+    if (pathname === "/stage-instances" && method === "POST") {
+      const channelId = isRecord(body) && typeof body.channel_id === "string" ? body.channel_id : undefined;
+      if (!channelId) throw new Error("Creating a stage instance requires body.channel_id.");
+      await this.assertChannelGuild(channelId, guildId);
+      return;
+    }
+
+    const webhookMatch = pathname.match(/^\/webhooks\/(\d{17,20})$/);
+    if (webhookMatch?.[1]) {
+      const webhook = await this.request<{ guild_id?: string }>("GET", `/webhooks/${webhookMatch[1]}`);
+      if (webhook.guild_id !== guildId) throw new Error("Webhook does not belong to the selected guild.");
+      return;
+    }
+
+    const inviteMatch = pathname.match(/^\/invites\/([^/]+)$/);
+    if (inviteMatch?.[1]) {
+      const invite = await this.request<{ guild?: { id?: string } }>("GET", `/invites/${encodeURIComponent(inviteMatch[1])}`);
+      if (invite.guild?.id !== guildId) throw new Error("Invite does not belong to the selected guild.");
+      return;
+    }
+
+    const commandMatch = pathname.match(/^\/applications\/(\d{17,20})\/guilds\/(\d{17,20})\/commands(?:\/|$)/);
+    if (commandMatch?.[1] && commandMatch[2] === guildId) {
+      const bot = await this.request<{ id: string }>("GET", "/users/@me");
+      if (bot.id !== commandMatch[1]) throw new Error("Application command route does not belong to this bot.");
+      return;
+    }
+
+    throw new Error("Raw routes must resolve to the selected guild, one of its channels, or a verified guild-owned resource.");
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
