@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "guild": {
+    "name": "ELALEM",
+    "description": "Official support, updates, and community space for ELALEM.",
+    "preferredLocale": "en-US",
+    "verificationLevel": 1,
+    "defaultMessageNotifications": 1,
+    "explicitContentFilter": 2,
+    "rulesChannelKey": "start-here",
+    "publicUpdatesChannelKey": "announcements",
+    "safetyAlertsChannelKey": "staff-logs"
+  },
+  "roles": [
+    {
+      "key": "moderator",
+      "name": "Moderator",
+      "color": 5793266,
+      "hoist": true,
+      "mentionable": false,
+      "permissions": ["ViewAuditLog", "ManageMessages", "ManageThreads", "ModerateMembers", "KickMembers"]
+    },
+    {
+      "key": "contributor",
+      "name": "Contributor",
+      "color": 7506394,
+      "hoist": false,
+      "mentionable": false
+    },
+    {
+      "key": "closed-alpha-tester",
+      "name": "Closed Alpha Tester",
+      "color": 9807270,
+      "hoist": false,
+      "mentionable": false,
+      "permissions": []
+    },
+    {
+      "key": "update-pings",
+      "name": "Update Pings",
+      "color": 3447003,
+      "hoist": false,
+      "mentionable": true,
+      "permissions": []
+    }
+  ],
+  "categories": [
+    { "key": "start", "name": "── START HERE ──", "position": 0 },
+    { "key": "community", "name": "── COMMUNITY ──", "position": 1 },
+    { "key": "support", "name": "── SUPPORT ──", "position": 2 },
+    { "key": "voice", "name": "── VOICE ──", "position": 3 },
+    {
+      "key": "staff",
+      "name": "── STAFF ──",
+      "position": 4,
+      "overwrites": [
+        { "target": "@everyone", "deny": ["ViewChannel"] },
+        { "target": "moderator", "allow": ["ViewChannel", "SendMessages", "ReadMessageHistory", "ManageMessages"] }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "key": "start-here",
+      "name": "start-here",
+      "type": "text",
+      "categoryKey": "start",
+      "topic": "A quick introduction to ELALEM, the community rules, and where to find help.",
+      "position": 0,
+      "overwrites": [
+        { "target": "@everyone", "allow": ["ViewChannel", "ReadMessageHistory"], "deny": ["SendMessages", "CreatePublicThreads", "CreatePrivateThreads"] }
+      ],
+      "messages": [
+        {
+          "key": "elalem-welcome-v1",
+          "pin": true,
+          "content": "# Welcome to ELALEM\nThis is the official home for support, product updates, and thoughtful feedback around ELALEM. Make yourself comfortable — just keep things useful and respectful.\n\n## Find your way\n✦ Chat with the community in {{channel:general}}\n✦ Try commands in {{channel:bot-commands}}\n✦ Ask for help or report a bug in {{channel:bugs}}\n✦ Share a feature idea in {{channel:recommendations}}\n✦ Follow important news in {{channel:announcements}} and release details in {{channel:changelog}}\n\n## House rules\n1. Treat people with respect. Harassment, discrimination, threats, and deliberate disruption are not welcome.\n2. Keep posts in the right place and follow the forum prompts — they help us respond faster.\n3. Do not share passwords, bot tokens, API keys, private contact details, malicious files, scams, or illegal content.\n4. Constructive criticism is welcome. Aim at the idea or the product, never the person.\n5. Discord's Terms of Service and Community Guidelines apply here.\n6. Staff may remove harmful content or restrict access when it is necessary to protect the community.\n\n## Before you post\nA quick search may already have the answer. For bug reports, include what happened, what you expected, clear steps, and any safe screenshots or logs you have.\n\nThanks for helping make ELALEM better. ♢"
+        }
+      ]
+    },
+    {
+      "key": "announcements",
+      "name": "announcements",
+      "type": "announcement",
+      "categoryKey": "start",
+      "topic": "Major ELALEM news, launches, and service notices.",
+      "position": 1,
+      "overwrites": [
+        { "target": "@everyone", "allow": ["ViewChannel", "ReadMessageHistory"], "deny": ["SendMessages"] }
+      ]
+    },
+    {
+      "key": "changelog",
+      "name": "changelog",
+      "type": "text",
+      "categoryKey": "start",
+      "topic": "Release notes, fixes, and smaller product changes.",
+      "position": 2,
+      "overwrites": [
+        { "target": "@everyone", "allow": ["ViewChannel", "ReadMessageHistory"], "deny": ["SendMessages"] }
+      ]
+    },
+    {
+      "key": "general",
+      "name": "general",
+      "type": "text",
+      "categoryKey": "community",
+      "topic": "Talk about ELALEM, share what you are working on, or simply say hello.",
+      "position": 0,
+      "slowmodeSeconds": 2
+    },
+    {
+      "key": "bot-commands",
+      "name": "bot-commands",
+      "type": "text",
+      "categoryKey": "community",
+      "topic": "A tidy place to run and test ELALEM commands.",
+      "position": 1,
+      "slowmodeSeconds": 2
+    },
+    {
+      "key": "bugs",
+      "name": "bugs",
+      "type": "forum",
+      "categoryKey": "support",
+      "topic": "# Before posting\nSearch the forum first — someone may already have reported the same issue.\n\n## A useful report includes\n**Title** — a short, specific summary. “Music stops after skipping a track” is much more useful than “Bot broken.”\n\n**What happened?** — tell us what you were doing and where things went wrong.\n\n**Steps to reproduce**\n1. What did you do first?\n2. What happened next?\n3. What reliably triggers the problem?\n\n**Expected result** — what should have happened?\n\n**Actual result** — what happened instead?\n\n**Evidence** — safe screenshots, video, logs, or the exact error message are welcome. You can also add the command, feature, approximate time, and whether the issue repeats.\n\nNever post passwords, bot tokens, API keys, email addresses, or other private information.",
+      "position": 0,
+      "defaultSortOrder": "latest_activity",
+      "defaultForumLayout": "list",
+      "requireTag": true,
+      "forumTags": [
+        { "name": "Help" },
+        { "name": "Music" },
+        { "name": "AI" },
+        { "name": "Economy" },
+        { "name": "Fishing" },
+        { "name": "Moderation" },
+        { "name": "Entertainment" },
+        { "name": "Other" },
+        { "name": "Known Issue", "moderated": true },
+        { "name": "Resolved", "moderated": true }
+      ]
+    },
+    {
+      "key": "recommendations",
+      "name": "ideas-and-feedback",
+      "type": "forum",
+      "categoryKey": "support",
+      "topic": "# Share an idea\nTell us what should change and why it would make ELALEM clearer, more useful, or more enjoyable.\n\n## Suggested behaviour\nDescribe how you imagine it working. Examples, screenshots, references, and reasonable alternatives are all helpful.\n\nKeep one main idea per post, choose the closest tag, and search for similar suggestions before opening a new one. Natural, honest feedback is far more useful than a polished essay.",
+      "position": 1,
+      "defaultSortOrder": "latest_activity",
+      "defaultForumLayout": "list",
+      "requireTag": true,
+      "forumTags": [
+        { "name": "Feature" },
+        { "name": "Command" },
+        { "name": "UI / UX" },
+        { "name": "Music" },
+        { "name": "AI" },
+        { "name": "Economy" },
+        { "name": "Fishing" },
+        { "name": "Moderation" },
+        { "name": "Translation" },
+        { "name": "Community" }
+      ]
+    },
+    {
+      "key": "lounge",
+      "name": "Lounge",
+      "type": "voice",
+      "categoryKey": "voice",
+      "position": 0
+    },
+    {
+      "key": "staff-chat",
+      "name": "staff-chat",
+      "type": "text",
+      "categoryKey": "staff",
+      "position": 0
+    },
+    {
+      "key": "staff-logs",
+      "name": "logs",
+      "type": "text",
+      "categoryKey": "staff",
+      "position": 1
+    }
+  ]
+}
