@@ -8,6 +8,7 @@ type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export interface DiscordRequestOptions {
   body?: unknown;
   reason?: string;
+  auth?: boolean;
 }
 
 export class DiscordClient {
@@ -26,7 +27,8 @@ export class DiscordClient {
   async request<T = unknown>(method: Method, route: string, options: DiscordRequestOptions = {}): Promise<T> {
     const requestOptions = {
       ...(options.body === undefined ? {} : { body: options.body }),
-      ...(options.reason === undefined ? {} : { reason: this.reason(options.reason) })
+      ...(options.reason === undefined ? {} : { reason: this.reason(options.reason) }),
+      ...(options.auth === undefined ? {} : { auth: options.auth })
     };
 
     switch (method) {
