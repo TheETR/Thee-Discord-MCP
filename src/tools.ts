@@ -1,27 +1,18 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { registerAdvancedTools } from "./advanced-tools.js";
 import { applyBlueprint, fetchBlueprintSnapshot, planBlueprint, ServerBlueprintSchema } from "./blueprint.js";
 import type { AppConfig } from "./config.js";
 import { redactConfig } from "./config.js";
 import type { DiscordClient } from "./discord.js";
 import { knownPermissionNames, permissionBits } from "./permissions.js";
+import { jsonResult } from "./results.js";
 import type { StateStore } from "./state.js";
 
 const Snowflake = z.string().regex(/^\d{17,20}$/);
 const JsonObject = z.record(z.string(), z.unknown());
 const DryRun = z.boolean().default(true);
-
-function jsonResult(value: unknown) {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
-    structuredContent: isRecord(value) ? value : { value }
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 async function optionalRequest(client: DiscordClient, method: "GET", route: string) {
   try {
@@ -38,6 +29,8 @@ export function registerTools(args: {
   store: StateStore;
 }) {
   const { server, client, config, store } = args;
+
+  registerAdvancedTools({ server, client });
 
   server.registerTool(
     "discord_health",

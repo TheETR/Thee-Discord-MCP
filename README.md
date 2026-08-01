@@ -9,12 +9,18 @@ A local MCP server for inspecting and managing an allowlisted Discord server thr
 - Forum tags, posting guidelines, sorting, and layout
 - Messages: list, send, edit, delete, pin, unpin, and bulk delete
 - Members: list/search, timeout, kick, ban, and unban
+- Reactions, invites, scheduled events, and forum/thread membership
+- Webhook lifecycle and execution with token/URL redaction
+- Voice member inspection, moves, disconnects, server mute, and server deaf
+- Membership Screening rule reads and guarded updates
 - AutoMod rules, onboarding, welcome screen, emojis, and audit-log reads
 - Idempotent JSON blueprints with a dry-run planner
 - Bot and application profile management, including avatar and banner data URIs
 - A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
-There are 27 MCP tools. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
+There are 37 MCP tools. Related operations are grouped into explicit action-based tools, so the public surface stays discoverable without turning every REST action into a separate executable. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
+
+`discord_capabilities` reports the named operation families without contacting Discord. The advanced families cover directory/member searches, reactions, webhooks, invites, scheduled events, forum threads, voice members, permission overwrites, and Membership Screening. Empty `204 No Content` responses are normalized to `{ "ok": true }`, and webhook tokens and URLs are redacted from tool results.
 
 ## Safety modes
 
@@ -32,11 +38,12 @@ Create a dedicated application in the Discord Developer Portal, add a bot, and i
 
 For the full tool set, the bot may need:
 
-- View Channels, Read Message History, Send Messages, Manage Messages, Manage Threads
+- View Channels, Read Message History, Send Messages, Add Reactions, Manage Messages, Manage Threads
 - Manage Channels, Manage Roles
 - Moderate Members, Kick Members, Ban Members
-- Manage Guild, View Audit Log
-- Manage Webhooks / Manage Emojis and Stickers only if you use related operations
+- Move Members, Mute Members, Deafen Members
+- Manage Guild, View Audit Log, Create Events, Manage Events
+- Create Instant Invite, Manage Webhooks, and Manage Emojis and Stickers only if you use related operations
 
 `Administrator` is convenient but not required or recommended. Discord role hierarchy still applies: the operator can manage only roles and members below its highest role.
 
@@ -86,6 +93,8 @@ Once the snapshot looks right, set `DISCORD_MODE=safe-write`, restart the MCP se
 ## Blueprint workflow
 
 `examples/elalem.blueprint.json` provides an English ELALEM support and community layout with restrained category styling, a welcome message, two forum templates, tags, staff privacy, and practical channel names.
+
+See `docs/ELALEM.md` for the live-server handoff, current user-facing channel copy, and the remaining boundaries that require Discord's UI or another bot runtime.
 
 Recommended flow:
 
