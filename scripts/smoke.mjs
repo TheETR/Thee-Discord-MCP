@@ -23,8 +23,8 @@ const client = new Client({ name: "thee-discord-mcp-smoke", version: "1.0.0" });
 try {
   await client.connect(transport);
   const { tools } = await client.listTools();
-  if (tools.length !== 36) {
-    throw new Error(`Expected 36 MCP tools, received ${tools.length}.`);
+  if (tools.length !== 37) {
+    throw new Error(`Expected 37 MCP tools, received ${tools.length}.`);
   }
   const requiredAdvancedTools = [
     "discord_capabilities",
@@ -35,7 +35,8 @@ try {
     "discord_scheduled_event",
     "discord_forum_thread",
     "discord_voice_member",
-    "discord_permission_overwrite"
+    "discord_permission_overwrite",
+    "discord_membership_screening"
   ];
   const availableNames = new Set(tools.map((tool) => tool.name));
   const missing = requiredAdvancedTools.filter((name) => !availableNames.has(name));

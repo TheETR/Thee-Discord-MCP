@@ -41,7 +41,9 @@ The server-side rules should cover:
 - Discord's Terms of Service and Community Guidelines apply.
 - Staff may remove harmful content or restrict access when needed to protect the community.
 
-As of the supplied Access screenshot, the server is invite-only and Onboarding is enabled, but Discord's **Server Rules** switch is still disabled and its rules list is empty. The public bot REST API used by this project does not expose that Access-page rules editor, so this final switch and the rule entries must be completed in Discord's server settings.
+A live API read on 2026-08-01 confirmed that Membership Screening is enabled, the rules channel is `#start-here`, verification level is `2`, and all eight Access-page rules are present. TheeDiscordMCP can read and replace those rules with `discord_membership_screening`.
+
+Discord marks the Membership Screening API as unstable and has removed the edit contract from its public documentation. The currently installed Discord API v10 types still define GET and PATCH, and live GET access is verified. For that reason, updates default to dry-run and require `full` mode, destructive opt-in, and the exact confirmation `UPDATE SERVER RULES <guild-id>`. Always verify the result in Discord's Access screen.
 
 ## Links and project context
 
@@ -55,6 +57,7 @@ Keep the About section short and written in first person. Keep it above the publ
 - Categories and text, announcement, voice, stage, forum, and media channels
 - Permission overwrites, channel order, forum tags, and pinned guide messages
 - Member search, moderation, reactions, invites, webhooks, scheduled events, and voice-member controls
+- Membership Screening reads and guarded Server Rules replacement
 - AutoMod, onboarding, welcome screen, emojis, audit-log reads, and bot profile data
 - Idempotent blueprint planning and application with dry-run previews
 - Allowlist-scoped raw REST access for newly released Discord endpoints
@@ -63,7 +66,7 @@ All writes are protected by the configured safety mode. Destructive operations a
 
 ## Remaining limitations
 
-- **Access-page Server Rules:** must be enabled and entered manually in Discord.
+- **Membership Screening stability:** rules can be read and changed, but Discord labels this API unstable and no longer publishes its edit contract. Use dry-run, exact confirmation, and a final UI check.
 - **EMSALI direct conversation:** creating and describing `#emsali-chat` is a guild change; responding to ordinary messages requires the EMSALI bot runtime to subscribe to that channel and have Message Content access where Discord requires it.
 - **Music playback:** TheeDiscordMCP can create the channel and voice layout, but playback, queues, and audio streaming belong to a music bot/runtime.
 - **Voice audio:** the MCP can move, disconnect, mute, or deafen members; it does not join voice or transmit audio.
@@ -81,5 +84,5 @@ All writes are protected by the configured safety mode. Destructive operations a
 4. Use `full` mode only for one reviewed destructive action, then turn it off.
 5. Re-export the server and verify channel order, permissions, pins, forum tags, and role hierarchy.
 6. Test the onboarding flow with a non-staff account.
-7. Enable Server Rules manually and confirm they appear before a new member can interact.
+7. Read Server Rules with `discord_membership_screening`, preview any update, then confirm the final text in Discord's Access screen.
 8. Verify that ordinary messages in `#emsali-chat` reach EMSALI and that slash commands remain contained in `#command-chat`.

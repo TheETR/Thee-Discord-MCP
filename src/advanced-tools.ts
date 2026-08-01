@@ -69,6 +69,28 @@ export function redactWebhookSecrets(value: unknown): unknown {
   ]));
 }
 
+export function membershipScreeningBody(input: {
+  enabled?: boolean;
+  description?: string | null;
+  rules?: string[];
+  label: string;
+  required: boolean;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+    ...(input.description === undefined ? {} : { description: input.description })
+  };
+  if (input.rules !== undefined) {
+    body.form_fields = JSON.stringify([{
+      field_type: "TERMS",
+      label: input.label,
+      required: input.required,
+      values: input.rules
+    }]);
+  }
+  return body;
+}
+
 export function registerAdvancedTools(args: { server: McpServer; client: DiscordClient }) {
   const { server, client } = args;
 
@@ -89,10 +111,57 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         scheduled_events: ["list", "get", "create", "modify", "delete", "list_users"],
         forum_threads: ["list_active", "list_archived", "create", "modify", "delete", "list_members", "add_member", "remove_member"],
         voice_members: ["get", "move", "disconnect", "set_mute", "set_deaf"],
-        permission_overwrites: ["list", "upsert", "delete"]
+        permission_overwrites: ["list", "upsert", "delete"],
+        membership_screening: ["get", "update"]
       },
       note: "The raw guild request remains available for allowlist-scoped Discord REST endpoints not yet named."
     })
+  );
+
+  server.registerTool(
+    "discord_membership_screening",
+    {
+      description: "Read or replace the Membership Screening rules shown on Discord's Access page. Updates use Discord's unstable endpoint and require full mode plus exact confirmation.",
+      inputSchema: {
+        guildId: Snowflake,
+        action: z.enum(["get", "update"]),
+        enabled: z.boolean().optional(),
+        description: z.string().max(300).nullable().optional(),
+        rules: z.array(z.string().trim().min(1).max(512)).min(1).max(16).optional(),
+        label: z.string().trim().min(1).max(300).default("Read and agree to the server rules"),
+        required: z.boolean().default(true),
+        reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
+        dryRun: DryRun
+      }
+    },
+    async ({ guildId, action, enabled, description, rules, label, required: isRequired, reason, confirm, dryRun }) => {
+      client.policy.assertGuild(guildId);
+      const route = `/guilds/${guildId}/member-verification`;
+      if (action === "get") return jsonResult(await client.request("GET", route));
+      const body = membershipScreeningBody({
+        ...(enabled === undefined ? {} : { enabled }),
+        ...(description === undefined ? {} : { description }),
+        ...(rules === undefined ? {} : { rules }),
+        label,
+        required: isRequired
+      });
+      if (Object.keys(body).length === 0) {
+        throw new Error("update requires enabled, description, or rules.");
+      }
+      const expected = `UPDATE SERVER RULES ${guildId}`;
+      return runWrite(client, {
+        method: "PATCH",
+        route,
+        operation: "update membership screening",
+        body,
+        reason,
+        dryRun,
+        destructive: true,
+        confirm,
+        expectedConfirmation: expected
+      });
+    }
   );
 
   server.registerTool(

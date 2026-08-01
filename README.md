@@ -12,14 +12,15 @@ A local MCP server for inspecting and managing an allowlisted Discord server thr
 - Reactions, invites, scheduled events, and forum/thread membership
 - Webhook lifecycle and execution with token/URL redaction
 - Voice member inspection, moves, disconnects, server mute, and server deaf
+- Membership Screening rule reads and guarded updates
 - AutoMod rules, onboarding, welcome screen, emojis, and audit-log reads
 - Idempotent JSON blueprints with a dry-run planner
 - Bot and application profile management, including avatar and banner data URIs
 - A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
-There are 36 MCP tools. Related operations are grouped into explicit action-based tools, so the public surface stays discoverable without turning every REST action into a separate executable. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
+There are 37 MCP tools. Related operations are grouped into explicit action-based tools, so the public surface stays discoverable without turning every REST action into a separate executable. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
 
-`discord_capabilities` reports the named operation families without contacting Discord. The advanced families cover directory/member searches, reactions, webhooks, invites, scheduled events, forum threads, voice members, and permission overwrites. Empty `204 No Content` responses are normalized to `{ "ok": true }`, and webhook tokens and URLs are redacted from tool results.
+`discord_capabilities` reports the named operation families without contacting Discord. The advanced families cover directory/member searches, reactions, webhooks, invites, scheduled events, forum threads, voice members, permission overwrites, and Membership Screening. Empty `204 No Content` responses are normalized to `{ "ok": true }`, and webhook tokens and URLs are redacted from tool results.
 
 ## Safety modes
 
