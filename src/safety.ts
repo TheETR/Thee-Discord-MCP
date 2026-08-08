@@ -23,6 +23,12 @@ export class SafetyPolicy {
     }
   }
 
+  assertUser(userId: string): void {
+    if (!this.config.allowedUserIds.has(userId)) {
+      throw new PolicyError(`User ${userId} is not in DISCORD_ALLOWED_USER_IDS.`);
+    }
+  }
+
   assertWrite(check: WriteCheck): void {
     if (this.config.mode === "read-only") {
       throw new PolicyError(`${check.operation} is blocked because DISCORD_MODE=read-only.`);

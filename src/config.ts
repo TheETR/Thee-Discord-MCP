@@ -24,6 +24,7 @@ export type Mode = z.infer<typeof ModeSchema>;
 const EnvironmentSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().min(20),
   DISCORD_ALLOWED_GUILD_IDS: z.string().min(1),
+  DISCORD_ALLOWED_USER_IDS: z.string().default(""),
   DISCORD_MODE: ModeSchema.default("read-only"),
   DISCORD_ENABLE_DESTRUCTIVE: z.string().default("false"),
   DISCORD_MAX_BULK_ACTIONS: z.coerce.number().int().min(1).max(1000).default(100),
@@ -34,6 +35,7 @@ const EnvironmentSchema = z.object({
 export interface AppConfig {
   token: string;
   allowedGuildIds: ReadonlySet<string>;
+  allowedUserIds: ReadonlySet<string>;
   mode: Mode;
   destructiveEnabled: boolean;
   maxBulkActions: number;
@@ -56,9 +58,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("DISCORD_ALLOWED_GUILD_IDS must contain comma-separated Discord snowflakes.");
   }
 
+  const userIds = parsed.data.DISCORD_ALLOWED_USER_IDS.split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (userIds.some((id) => !/^\d{17,20}$/.test(id))) {
+    throw new Error("DISCORD_ALLOWED_USER_IDS must contain comma-separated Discord snowflakes.");
+  }
+
   return {
     token: parsed.data.DISCORD_BOT_TOKEN,
     allowedGuildIds: new Set(guildIds),
+    allowedUserIds: new Set(userIds),
     mode: parsed.data.DISCORD_MODE,
     destructiveEnabled: parsed.data.DISCORD_ENABLE_DESTRUCTIVE.toLowerCase() === "true",
     maxBulkActions: parsed.data.DISCORD_MAX_BULK_ACTIONS,
@@ -70,6 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 export function redactConfig(config: AppConfig) {
   return {
     allowedGuildIds: [...config.allowedGuildIds],
+    allowedUserIds: [...config.allowedUserIds],
     mode: config.mode,
     destructiveEnabled: config.destructiveEnabled,
     maxBulkActions: config.maxBulkActions,

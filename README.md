@@ -8,22 +8,42 @@ A local MCP server for inspecting and managing an allowlisted Discord server thr
 - Categories, text/announcement/voice/stage/forum/media channels, ordering, and permission overwrites
 - Forum tags, posting guidelines, sorting, and layout
 - Messages: list, send, edit, delete, pin, unpin, and bulk delete
+- Message inspection, full JSON payloads, announcement crossposts, current paginated pins, and complete reaction cleanup
 - Members: list/search, timeout, kick, ban, and unban
+- Guild previews, role member counts, prune previews and guarded execution, bulk bans, integrations, incident actions, vanity URLs, and voice regions
 - Reactions, invites, scheduled events, and forum/thread membership
+- Public, private, and joined-private thread archives; threads created from messages; join/leave and member inspection
 - Webhook lifecycle and execution with token/URL redaction
 - Voice member inspection, moves, disconnects, server mute, and server deaf
 - Stage instances, soundboard sounds, polls, and indexed message search
 - Guild stickers with validated multipart uploads
-- Guild templates, widgets, and this bot's guild application commands
+- Guild templates, widgets, and guild or global application commands
+- Application emojis and linked-role metadata schemas
+- Optional one-to-one DMs restricted to an explicit user allowlist and disabled by default
 - Membership Screening rule reads and guarded updates
 - AutoMod rules, onboarding, welcome screen, emojis, and audit-log reads
 - Idempotent JSON blueprints with a dry-run planner
 - Bot and application profile management, including avatar and banner data URIs
 - A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
-There are 45 MCP tools. Related operations are grouped into explicit action-based tools, so the public surface stays discoverable without turning every REST action into a separate executable. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
+There are **49 MCP tools exposing 166 schema-declared operations**. The operation count treats every top-level `action` choice as one operation and every single-purpose tool as one operation. Related work stays together: for example, one `discord_guild_operations` tool contains preview, role-count, prune, integration, vanity URL, bulk-ban, voice-region, and incident actions instead of publishing eleven separate executables. The smoke test calculates and locks both inventory totals so documentation drift fails validation.
 
-`discord_capabilities` reports the named operation families without contacting Discord. The named surface now also covers Stage instances, soundboard, stickers, polls, indexed message search, guild templates, application commands, and the guild widget. Empty `204 No Content` responses are normalized to `{ "ok": true }`, and webhook tokens and URLs are redacted from tool results.
+Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messages have a separate `DISCORD_ALLOWED_USER_IDS` boundary, are empty by default, and verify the one-to-one DM recipient before every read or write. The raw escape hatch remains guild-scoped; it accepts routes under an allowed guild and verified guild-owned resources without becoming a general Discord request proxy.
+
+`discord_capabilities` reports the inventory totals, grouping rule, safety model, and named operation families without contacting Discord. Empty `204 No Content` responses are normalized to `{ "ok": true }`; webhook credentials and uploaded data URIs are redacted from previews and tool results.
+
+## Coverage at a glance
+
+| Surface | Grouped capabilities |
+|---|---|
+| Guild operations | Preview, settings, roles and counts, bans and bulk bans, prune preview/run, integrations, incidents, regions, vanity URL, audit log |
+| Channels and threads | All guild channel types, ordering, overwrites, announcement follows, typing, voice status, public/private archives, membership |
+| Messages | History, lookup, search, structured send/edit, crosspost, current pins, bulk delete, reactions, polls |
+| Community configuration | AutoMod, Membership Screening, onboarding, welcome screen, scheduled events, invites, widgets |
+| Voice and expressions | Voice-member control, Stage instances, soundboard, guild/application emojis, stickers |
+| Applications and integrations | Guild/global commands, linked-role metadata, webhooks, templates, bot and application profiles |
+| Controlled outreach | Allowlisted one-to-one DM open/read/send/edit/delete; disabled until recipient IDs are configured |
+| Repeatable operations | Snapshots, dry-run plans, idempotent blueprints, scoped raw guild REST |
 
 ## Safety modes
 
@@ -46,6 +66,7 @@ For the full tool set, the bot may need:
 - Moderate Members, Kick Members, Ban Members
 - Move Members, Mute Members, Deafen Members
 - Manage Guild, View Audit Log, Create Events, Manage Events
+- Pin Messages and Set Voice Channel Status for the corresponding features
 - Speak, Use Soundboard, and Use External Sounds for soundboard playback
 - Create Instant Invite, Manage Webhooks, Create Guild Expressions, and Manage Guild Expressions only if you use related operations
 
@@ -68,8 +89,11 @@ Open `.env` locally and set:
 ```dotenv
 DISCORD_BOT_TOKEN=your_dedicated_bot_token
 DISCORD_ALLOWED_GUILD_IDS=123456789012345678
+DISCORD_ALLOWED_USER_IDS=
 DISCORD_MODE=read-only
 ```
+
+Leave `DISCORD_ALLOWED_USER_IDS` empty unless the bot should communicate with specific users. Add only comma-separated Discord user IDs whose one-to-one DM access you intend to permit. Group DMs and arbitrary recipients are rejected.
 
 Do not paste the token into messages, issue reports, or committed files. To copy a Discord server ID, enable Developer Mode in Discord, right-click the server, and choose **Copy Server ID**.
 
@@ -126,7 +150,7 @@ DISCORD_MODE=full
 DISCORD_ENABLE_DESTRUCTIVE=true
 ```
 
-Each destructive tool returns or documents the exact confirmation text it expects, such as `DELETE CHANNEL <id>`. The confirmation is checked again inside the MCP server. Return to `safe-write` or `read-only` afterward.
+Each destructive tool returns or documents the exact confirmation text it expects, such as `DELETE CHANNEL <id>`. High-fan-out operations such as bulk bans and pruning include a digest derived from the exact target set, so a confirmation cannot be reused for a different batch. Irreversible announcement crossposts and linked-role metadata replacement use the same full-mode gate. Return to `safe-write` or `read-only` afterward.
 
 The raw REST tool treats every non-GET request as destructive. This keeps an unfamiliar endpoint from bypassing the named safety gates.
 
