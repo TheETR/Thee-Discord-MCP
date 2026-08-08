@@ -6,6 +6,7 @@ import { applyBlueprint, fetchBlueprintSnapshot, planBlueprint, ServerBlueprintS
 import type { AppConfig } from "./config.js";
 import { redactConfig } from "./config.js";
 import type { DiscordClient } from "./discord.js";
+import { registerExtraTools } from "./extra-tools.js";
 import { knownPermissionNames, permissionBits } from "./permissions.js";
 import { jsonResult } from "./results.js";
 import type { StateStore } from "./state.js";
@@ -31,6 +32,7 @@ export function registerTools(args: {
   const { server, client, config, store } = args;
 
   registerAdvancedTools({ server, client });
+  registerExtraTools({ server, client });
 
   server.registerTool(
     "discord_health",
