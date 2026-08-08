@@ -1,4 +1,4 @@
-import { REST } from "@discordjs/rest";
+import { REST, type RawFile } from "@discordjs/rest";
 
 import type { AppConfig } from "./config.js";
 import { SafetyPolicy } from "./safety.js";
@@ -9,6 +9,8 @@ export interface DiscordRequestOptions {
   body?: unknown;
   reason?: string;
   auth?: boolean;
+  files?: RawFile[];
+  appendToFormData?: boolean;
 }
 
 export class DiscordClient {
@@ -28,7 +30,9 @@ export class DiscordClient {
     const requestOptions = {
       ...(options.body === undefined ? {} : { body: options.body }),
       ...(options.reason === undefined ? {} : { reason: this.reason(options.reason) }),
-      ...(options.auth === undefined ? {} : { auth: options.auth })
+      ...(options.auth === undefined ? {} : { auth: options.auth }),
+      ...(options.files === undefined ? {} : { files: options.files }),
+      ...(options.appendToFormData === undefined ? {} : { appendToFormData: options.appendToFormData })
     };
 
     switch (method) {

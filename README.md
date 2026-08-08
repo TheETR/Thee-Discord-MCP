@@ -12,15 +12,18 @@ A local MCP server for inspecting and managing an allowlisted Discord server thr
 - Reactions, invites, scheduled events, and forum/thread membership
 - Webhook lifecycle and execution with token/URL redaction
 - Voice member inspection, moves, disconnects, server mute, and server deaf
+- Stage instances, soundboard sounds, polls, and indexed message search
+- Guild stickers with validated multipart uploads
+- Guild templates, widgets, and this bot's guild application commands
 - Membership Screening rule reads and guarded updates
 - AutoMod rules, onboarding, welcome screen, emojis, and audit-log reads
 - Idempotent JSON blueprints with a dry-run planner
 - Bot and application profile management, including avatar and banner data URIs
 - A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
-There are 37 MCP tools. Related operations are grouped into explicit action-based tools, so the public surface stays discoverable without turning every REST action into a separate executable. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
+There are 45 MCP tools. Related operations are grouped into explicit action-based tools, so the public surface stays discoverable without turning every REST action into a separate executable. Every server call is limited to guild IDs in the local allowlist. The raw escape hatch accepts routes under an allowed guild, its verified channels, webhooks, invites, stage instances, and the operator's commands for that guild. This keeps broad Discord API coverage without exposing unrelated servers.
 
-`discord_capabilities` reports the named operation families without contacting Discord. The advanced families cover directory/member searches, reactions, webhooks, invites, scheduled events, forum threads, voice members, permission overwrites, and Membership Screening. Empty `204 No Content` responses are normalized to `{ "ok": true }`, and webhook tokens and URLs are redacted from tool results.
+`discord_capabilities` reports the named operation families without contacting Discord. The named surface now also covers Stage instances, soundboard, stickers, polls, indexed message search, guild templates, application commands, and the guild widget. Empty `204 No Content` responses are normalized to `{ "ok": true }`, and webhook tokens and URLs are redacted from tool results.
 
 ## Safety modes
 
@@ -43,7 +46,10 @@ For the full tool set, the bot may need:
 - Moderate Members, Kick Members, Ban Members
 - Move Members, Mute Members, Deafen Members
 - Manage Guild, View Audit Log, Create Events, Manage Events
-- Create Instant Invite, Manage Webhooks, and Manage Emojis and Stickers only if you use related operations
+- Speak, Use Soundboard, and Use External Sounds for soundboard playback
+- Create Instant Invite, Manage Webhooks, Create Guild Expressions, and Manage Guild Expressions only if you use related operations
+
+Indexed guild-message search additionally requires the privileged **Message Content** intent in the Discord Developer Portal. Without it, Discord returns `Missing Access`; other read tools continue to work.
 
 `Administrator` is convenient but not required or recommended. Discord role hierarchy still applies: the operator can manage only roles and members below its highest role.
 
@@ -95,6 +101,8 @@ Once the snapshot looks right, set `DISCORD_MODE=safe-write`, restart the MCP se
 `examples/elalem.blueprint.json` provides an English ELALEM support and community layout with restrained category styling, a welcome message, two forum templates, tags, staff privacy, and practical channel names.
 
 See `docs/ELALEM.md` for the live-server handoff, current user-facing channel copy, and the remaining boundaries that require Discord's UI or another bot runtime.
+
+See `docs/API_COVERAGE.md` for the full capability map, safety model, and deliberate boundaries.
 
 Recommended flow:
 

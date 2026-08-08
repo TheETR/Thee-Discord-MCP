@@ -112,7 +112,15 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         forum_threads: ["list_active", "list_archived", "create", "modify", "delete", "list_members", "add_member", "remove_member"],
         voice_members: ["get", "move", "disconnect", "set_mute", "set_deaf"],
         permission_overwrites: ["list", "upsert", "delete"],
-        membership_screening: ["get", "update"]
+        membership_screening: ["get", "update"],
+        stage_instances: ["get", "create", "modify", "delete"],
+        soundboard: ["list_default", "list_guild", "get", "create", "modify", "delete", "send"],
+        stickers: ["list", "get", "create", "modify", "delete"],
+        polls: ["create", "list_voters", "end"],
+        message_search: ["search"],
+        guild_templates: ["list", "get", "create", "sync", "modify", "delete"],
+        application_commands: ["list", "get", "upsert", "modify", "delete", "bulk_overwrite"],
+        widget: ["get_settings", "get_widget", "modify_settings", "image_url"]
       },
       note: "The raw guild request remains available for allowlist-scoped Discord REST endpoints not yet named."
     })
