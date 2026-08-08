@@ -23,8 +23,8 @@ const client = new Client({ name: "thee-discord-mcp-smoke", version: "1.0.0" });
 try {
   await client.connect(transport);
   const { tools } = await client.listTools();
-  if (tools.length !== 45) {
-    throw new Error(`Expected 45 MCP tools, received ${tools.length}.`);
+  if (tools.length !== 49) {
+    throw new Error(`Expected 49 MCP tools, received ${tools.length}.`);
   }
   const requiredAdvancedTools = [
     "discord_capabilities",
@@ -44,14 +44,25 @@ try {
     "discord_message_search",
     "discord_guild_template",
     "discord_application_command",
-    "discord_widget"
+    "discord_widget",
+    "discord_guild_operations",
+    "discord_channel_operations",
+    "discord_dm",
+    "discord_application_assets"
   ];
   const availableNames = new Set(tools.map((tool) => tool.name));
   const missing = requiredAdvancedTools.filter((name) => !availableNames.has(name));
   if (missing.length > 0) {
     throw new Error(`Missing advanced MCP tools: ${missing.join(", ")}`);
   }
-  console.log(`MCP handshake passed; ${tools.length} tools discovered.`);
+  const declaredOperations = tools.reduce((total, tool) => {
+    const actionSchema = tool.inputSchema?.properties?.action;
+    return total + (Array.isArray(actionSchema?.enum) ? actionSchema.enum.length : 1);
+  }, 0);
+  if (declaredOperations !== 166) {
+    throw new Error(`Expected 166 schema-declared operations, received ${declaredOperations}.`);
+  }
+  console.log(`MCP handshake passed; ${tools.length} tools and ${declaredOperations} schema-declared operations discovered.`);
 } finally {
   await client.close();
 }

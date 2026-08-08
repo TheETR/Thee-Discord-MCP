@@ -484,9 +484,10 @@ export function registerExtraTools(args: { server: McpServer; client: DiscordCli
   server.registerTool(
     "discord_application_command",
     {
-      description: "List and manage this bot's guild-scoped slash, user, and message commands.",
+      description: "List and manage this application's guild-scoped or global slash, user, and message commands.",
       inputSchema: {
-        guildId: Snowflake,
+        scope: z.enum(["guild", "global"]).default("guild"),
+        guildId: Snowflake.optional(),
         action: z.enum(["list", "get", "upsert", "modify", "delete", "bulk_overwrite"]),
         commandId: Snowflake.optional(),
         body: JsonObject.optional(),
@@ -496,22 +497,26 @@ export function registerExtraTools(args: { server: McpServer; client: DiscordCli
         dryRun: DryRun
       }
     },
-    async ({ guildId, action, commandId, body, commands, withLocalizations, confirm, dryRun }) => {
-      client.policy.assertGuild(guildId);
-      const bot = await client.request<{ id: string }>("GET", "/users/@me");
-      const root = `/applications/${bot.id}/guilds/${guildId}/commands`;
+    async ({ scope, guildId, action, commandId, body, commands, withLocalizations, confirm, dryRun }) => {
+      const application = await client.request<{ id: string }>("GET", "/oauth2/applications/@me");
+      const selectedGuild = scope === "guild" ? required(guildId, "guildId") : undefined;
+      if (selectedGuild !== undefined) client.policy.assertGuild(selectedGuild);
+      const root = selectedGuild === undefined
+        ? `/applications/${application.id}/commands`
+        : `/applications/${application.id}/guilds/${selectedGuild}/commands`;
+      const scopeLabel = selectedGuild === undefined ? "global" : "guild";
       if (action === "list") return jsonResult(await client.request("GET", `${root}?with_localizations=${withLocalizations}`));
-      if (action === "upsert") return runWrite(client, { method: "POST", route: root, operation: "upsert guild command", body: required(body, "body"), dryRun });
+      if (action === "upsert") return runWrite(client, { method: "POST", route: root, operation: `upsert ${scopeLabel} command`, body: required(body, "body"), dryRun });
       if (action === "bulk_overwrite") {
-        const expected = `OVERWRITE GUILD COMMANDS ${guildId}`;
-        return runWrite(client, { method: "PUT", route: root, operation: "bulk overwrite guild commands", body: required(commands, "commands"), dryRun, destructive: true, confirm, expectedConfirmation: expected });
+        const expected = selectedGuild === undefined ? "OVERWRITE GLOBAL COMMANDS" : `OVERWRITE GUILD COMMANDS ${selectedGuild}`;
+        return runWrite(client, { method: "PUT", route: root, operation: `bulk overwrite ${scopeLabel} commands`, body: required(commands, "commands"), dryRun, destructive: true, confirm, expectedConfirmation: expected });
       }
       const selectedCommand = required(commandId, "commandId");
       const route = `${root}/${selectedCommand}`;
       if (action === "get") return jsonResult(await client.request("GET", route));
-      if (action === "modify") return runWrite(client, { method: "PATCH", route, operation: "modify guild command", body: required(body, "body"), dryRun });
-      const expected = `DELETE GUILD COMMAND ${selectedCommand}`;
-      return runWrite(client, { method: "DELETE", route, operation: "delete guild command", dryRun, destructive: true, confirm, expectedConfirmation: expected });
+      if (action === "modify") return runWrite(client, { method: "PATCH", route, operation: `modify ${scopeLabel} command`, body: required(body, "body"), dryRun });
+      const expected = `DELETE ${scopeLabel.toUpperCase()} COMMAND ${selectedCommand}`;
+      return runWrite(client, { method: "DELETE", route, operation: `delete ${scopeLabel} command`, dryRun, destructive: true, confirm, expectedConfirmation: expected });
     }
   );
 

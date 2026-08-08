@@ -6,11 +6,13 @@ import { DiscordClient } from "../src/discord.js";
 const guildId = "123456789012345678";
 const channelId = "234567890123456789";
 const botId = "345678901234567890";
+const dmUserId = "456789012345678901";
 
 function client() {
   const config: AppConfig = {
     token: "test-token-that-is-long-enough",
     allowedGuildIds: new Set([guildId]),
+    allowedUserIds: new Set([]),
     mode: "read-only",
     destructiveEnabled: false,
     maxBulkActions: 100,
@@ -36,6 +38,23 @@ describe("raw Discord route scoping", () => {
     await expect(instance.assertScopedRoute(guildId, "/webhooks/456789012345678901")).resolves.toBeUndefined();
     await expect(instance.assertScopedRoute(guildId, "/invites/example-code")).resolves.toBeUndefined();
     await expect(instance.assertScopedRoute(guildId, `/applications/${botId}/guilds/${guildId}/commands`)).resolves.toBeUndefined();
+  });
+
+  it("accepts only the exact allowlisted one-to-one DM recipient", async () => {
+    const config: AppConfig = {
+      token: "test-token-that-is-long-enough",
+      allowedGuildIds: new Set([guildId]),
+      allowedUserIds: new Set([dmUserId]),
+      mode: "read-only",
+      destructiveEnabled: false,
+      maxBulkActions: 100,
+      stateFile: ".data/test-state.json",
+      auditReasonPrefix: "test"
+    };
+    const instance = new DiscordClient(config);
+    vi.spyOn(instance, "request").mockResolvedValue({ type: 1, recipients: [{ id: dmUserId }] } as never);
+    await expect(instance.assertDmChannel(channelId, dmUserId)).resolves.toBeUndefined();
+    await expect(instance.assertDmChannel(channelId, "999999999999999999")).rejects.toThrow(/DISCORD_ALLOWED_USER_IDS/);
   });
 
   it("rejects routes that are not provably scoped to the allowlisted guild", async () => {

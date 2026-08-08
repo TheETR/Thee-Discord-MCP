@@ -102,14 +102,20 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
     },
     async () => jsonResult({
       transport: "stdio",
+      inventory: {
+        mcpTools: 49,
+        schemaDeclaredOperations: 166,
+        grouping: "Related operations share an action-based MCP tool instead of becoming separate tools."
+      },
       safety: ["guild allowlist", "read-only/safe-write/full modes", "dry-run by default", "exact destructive confirmations", "bulk limits", "audit reasons"],
       families: {
         directory: ["list_channels", "find_channels", "list_roles", "search_members", "list_bans", "get_ban"],
-        reactions: ["add", "remove_own", "list_users"],
+        messages: ["get", "send", "edit", "delete", "crosspost", "list_pins", "pin", "unpin", "bulk_delete"],
+        reactions: ["add", "remove_own", "remove_user", "list_users", "clear_all", "clear_emoji"],
         webhooks: ["list_channel", "list_guild", "get", "create", "modify", "delete", "execute"],
         invites: ["list_channel", "list_guild", "get", "create", "delete"],
         scheduled_events: ["list", "get", "create", "modify", "delete", "list_users"],
-        forum_threads: ["list_active", "list_archived", "create", "modify", "delete", "list_members", "add_member", "remove_member"],
+        forum_threads: ["list_active", "list_archived", "list_archived_private", "list_joined_private", "create", "create_from_message", "modify", "delete", "get_member", "list_members", "join", "leave", "add_member", "remove_member"],
         voice_members: ["get", "move", "disconnect", "set_mute", "set_deaf"],
         permission_overwrites: ["list", "upsert", "delete"],
         membership_screening: ["get", "update"],
@@ -120,7 +126,11 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         message_search: ["search"],
         guild_templates: ["list", "get", "create", "sync", "modify", "delete"],
         application_commands: ["list", "get", "upsert", "modify", "delete", "bulk_overwrite"],
-        widget: ["get_settings", "get_widget", "modify_settings", "image_url"]
+        widget: ["get_settings", "get_widget", "modify_settings", "image_url"],
+        guild_operations: ["get_preview", "get_role", "get_role_member_counts", "get_prune_count", "begin_prune", "list_voice_regions", "list_integrations", "delete_integration", "get_vanity_url", "bulk_ban", "modify_incident_actions"],
+        channel_operations: ["get", "follow_announcement", "trigger_typing", "set_voice_status"],
+        direct_messages: ["open", "list", "get", "send", "edit", "delete"],
+        application_assets: ["list_emojis", "get_emoji", "create_emoji", "modify_emoji", "delete_emoji", "get_role_connection_metadata", "update_role_connection_metadata"]
       },
       note: "The raw guild request remains available for allowlist-scoped Discord REST endpoints not yet named."
     })
@@ -216,23 +226,41 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_reaction",
     {
-      description: "Add/remove the bot's reaction or list users for a reaction on a guild message.",
+      description: "Add, inspect, or remove reactions on a guild message, including guarded moderation cleanup.",
       inputSchema: {
         guildId: Snowflake,
-        action: z.enum(["add", "remove_own", "list_users"]),
+        action: z.enum(["add", "remove_own", "remove_user", "list_users", "clear_all", "clear_emoji"]),
         channelId: Snowflake,
         messageId: Snowflake,
-        emoji: z.string().min(1).max(200),
+        emoji: z.string().min(1).max(200).optional(),
+        userId: Snowflake.optional(),
+        reactionType: z.number().int().min(0).max(1).default(0),
         limit: z.number().int().min(1).max(100).default(100),
         after: Snowflake.optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, action, channelId, messageId, emoji, limit, after, dryRun }) => {
+    async ({ guildId, action, channelId, messageId, emoji, userId, reactionType, limit, after, confirm, dryRun }) => {
       await client.assertChannelGuild(channelId, guildId);
-      const route = `/channels/${channelId}/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`;
+      const messageRoute = `/channels/${channelId}/messages/${messageId}`;
+      if (action === "clear_all") {
+        const expected = `CLEAR ALL REACTIONS ${channelId}/${messageId}`;
+        return runWrite(client, { method: "DELETE", route: `${messageRoute}/reactions`, operation: "clear all message reactions", dryRun, destructive: true, confirm, expectedConfirmation: expected });
+      }
+      const selectedEmoji = required(emoji, "emoji");
+      const route = `${messageRoute}/reactions/${encodeURIComponent(selectedEmoji)}`;
       if (action === "list_users") {
-        return jsonResult(await client.request("GET", `${route}${queryString({ limit, after })}`));
+        return jsonResult(await client.request("GET", `${route}${queryString({ type: reactionType, limit, after })}`));
+      }
+      if (action === "remove_user") {
+        const selectedUser = required(userId, "userId");
+        const expected = `REMOVE REACTION ${selectedUser} ${channelId}/${messageId}`;
+        return runWrite(client, { method: "DELETE", route: `${route}/${selectedUser}`, operation: "remove user reaction", dryRun, destructive: true, confirm, expectedConfirmation: expected });
+      }
+      if (action === "clear_emoji") {
+        const expected = `CLEAR EMOJI REACTIONS ${selectedEmoji} ${channelId}/${messageId}`;
+        return runWrite(client, { method: "DELETE", route, operation: "clear emoji reactions", dryRun, destructive: true, confirm, expectedConfirmation: expected });
       }
       return runWrite(client, {
         method: action === "add" ? "PUT" : "DELETE",
@@ -374,12 +402,28 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_forum_thread",
     {
-      description: "Create and manage forum posts/threads, archives, and thread membership.",
+      description: "Create and manage forum posts and text-channel threads, all archive types, and thread membership.",
       inputSchema: {
         guildId: Snowflake,
-        action: z.enum(["list_active", "list_archived", "create", "modify", "delete", "list_members", "add_member", "remove_member"]),
+        action: z.enum([
+          "list_active",
+          "list_archived",
+          "list_archived_private",
+          "list_joined_private",
+          "create",
+          "create_from_message",
+          "modify",
+          "delete",
+          "get_member",
+          "list_members",
+          "join",
+          "leave",
+          "add_member",
+          "remove_member"
+        ]),
         forumId: Snowflake.optional(),
         threadId: Snowflake.optional(),
+        messageId: Snowflake.optional(),
         userId: Snowflake.optional(),
         body: JsonObject.optional(),
         limit: z.number().int().min(1).max(100).default(50),
@@ -389,25 +433,34 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         dryRun: DryRun
       }
     },
-    async ({ guildId, action, forumId, threadId, userId, body, limit, before, reason, confirm, dryRun }) => {
+    async ({ guildId, action, forumId, threadId, messageId, userId, body, limit, before, reason, confirm, dryRun }) => {
       client.policy.assertGuild(guildId);
       if (action === "list_active") return jsonResult(await client.request("GET", `/guilds/${guildId}/threads/active`));
-      if (action === "list_archived" || action === "create") {
-        const selectedForum = required(forumId, "forumId");
-        await client.assertChannelGuild(selectedForum, guildId);
-        if (action === "list_archived") return jsonResult(await client.request("GET", `/channels/${selectedForum}/threads/archived/public${queryString({ limit, before })}`));
-        return runWrite(client, { method: "POST", route: `/channels/${selectedForum}/threads`, operation: "create forum post", body: required(body, "body"), reason, dryRun });
+      if (["list_archived", "list_archived_private", "list_joined_private", "create", "create_from_message"].includes(action)) {
+        const selectedParent = required(forumId, "forumId");
+        await client.assertChannelGuild(selectedParent, guildId);
+        if (action === "list_archived") return jsonResult(await client.request("GET", `/channels/${selectedParent}/threads/archived/public${queryString({ limit, before })}`));
+        if (action === "list_archived_private") return jsonResult(await client.request("GET", `/channels/${selectedParent}/threads/archived/private${queryString({ limit, before })}`));
+        if (action === "list_joined_private") return jsonResult(await client.request("GET", `/channels/${selectedParent}/users/@me/threads/archived/private${queryString({ limit, before })}`));
+        const route = action === "create_from_message"
+          ? `/channels/${selectedParent}/messages/${required(messageId, "messageId")}/threads`
+          : `/channels/${selectedParent}/threads`;
+        return runWrite(client, { method: "POST", route, operation: action === "create" ? "create thread or forum post" : "create thread from message", body: required(body, "body"), reason, dryRun });
       }
       const selectedThread = required(threadId, "threadId");
       await client.assertChannelGuild(selectedThread, guildId);
-      if (action === "list_members") return jsonResult(await client.request("GET", `/channels/${selectedThread}/thread-members${queryString({ with_member: true, limit })}`));
+      const memberRoot = `/channels/${selectedThread}/thread-members`;
+      if (action === "list_members") return jsonResult(await client.request("GET", `${memberRoot}${queryString({ with_member: true, limit })}`));
+      if (action === "join") return runWrite(client, { method: "PUT", route: `${memberRoot}/@me`, operation: "join thread", dryRun });
+      if (action === "leave") return runWrite(client, { method: "DELETE", route: `${memberRoot}/@me`, operation: "leave thread", dryRun });
       if (action === "modify") return runWrite(client, { method: "PATCH", route: `/channels/${selectedThread}`, operation: "modify forum post", body: required(body, "body"), reason, dryRun });
       if (action === "delete") {
         const expected = `DELETE FORUM POST ${selectedThread}`;
         return runWrite(client, { method: "DELETE", route: `/channels/${selectedThread}`, operation: "delete forum post", reason, dryRun, destructive: true, confirm, expectedConfirmation: expected });
       }
       const selectedUser = required(userId, "userId");
-      const memberRoute = `/channels/${selectedThread}/thread-members/${selectedUser}`;
+      const memberRoute = `${memberRoot}/${selectedUser}`;
+      if (action === "get_member") return jsonResult(await client.request("GET", `${memberRoute}?with_member=true`));
       if (action === "add_member") return runWrite(client, { method: "PUT", route: memberRoute, operation: "add thread member", dryRun });
       const expected = `REMOVE THREAD MEMBER ${selectedThread}/${selectedUser}`;
       return runWrite(client, { method: "DELETE", route: memberRoute, operation: "remove thread member", dryRun, destructive: true, confirm, expectedConfirmation: expected });

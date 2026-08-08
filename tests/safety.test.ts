@@ -7,6 +7,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
     token: "test-token-that-is-long-enough",
     allowedGuildIds: new Set(["123456789012345678"]),
+    allowedUserIds: new Set(["234567890123456789"]),
     mode: "read-only",
     destructiveEnabled: false,
     maxBulkActions: 100,
@@ -20,6 +21,12 @@ describe("SafetyPolicy", () => {
   it("rejects guilds outside the allowlist", () => {
     const policy = new SafetyPolicy(config());
     expect(() => policy.assertGuild("999999999999999999")).toThrow(PolicyError);
+  });
+
+  it("keeps direct messages disabled outside the explicit user allowlist", () => {
+    const policy = new SafetyPolicy(config());
+    expect(() => policy.assertUser("999999999999999999")).toThrow(/DISCORD_ALLOWED_USER_IDS/);
+    expect(() => policy.assertUser("234567890123456789")).not.toThrow();
   });
 
   it("blocks every write in read-only mode", () => {

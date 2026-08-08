@@ -5,6 +5,7 @@ import { registerAdvancedTools } from "./advanced-tools.js";
 import { applyBlueprint, fetchBlueprintSnapshot, planBlueprint, ServerBlueprintSchema } from "./blueprint.js";
 import type { AppConfig } from "./config.js";
 import { redactConfig } from "./config.js";
+import { registerCoverageTools } from "./coverage-tools.js";
 import type { DiscordClient } from "./discord.js";
 import { registerExtraTools } from "./extra-tools.js";
 import { knownPermissionNames, permissionBits } from "./permissions.js";
@@ -33,6 +34,7 @@ export function registerTools(args: {
 
   registerAdvancedTools({ server, client });
   registerExtraTools({ server, client });
+  registerCoverageTools({ server, client });
 
   server.registerTool(
     "discord_health",
@@ -359,31 +361,50 @@ export function registerTools(args: {
   server.registerTool(
     "discord_message",
     {
-      description: "Send, edit, delete, pin, or unpin a message in an allowed guild channel.",
+      description: "Inspect, send, edit, delete, crosspost, list pins, pin, or unpin messages in an allowed guild channel.",
       inputSchema: {
         guildId: Snowflake,
         channelId: Snowflake,
-        action: z.enum(["send", "edit", "delete", "pin", "unpin"]),
+        action: z.enum(["get", "send", "edit", "delete", "crosspost", "list_pins", "pin", "unpin"]),
         messageId: Snowflake.optional(),
         content: z.string().max(2000).optional(),
+        body: JsonObject.optional(),
+        limit: z.number().int().min(1).max(50).default(50),
+        before: z.string().max(100).optional(),
         confirm: z.string().optional(),
         reason: z.string().max(400).optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, channelId, action, messageId, content, confirm, reason, dryRun }) => {
+    async ({ guildId, channelId, action, messageId, content, body, limit, before, confirm, reason, dryRun }) => {
       await client.assertChannelGuild(channelId, guildId);
-      if (action !== "send" && !messageId) throw new Error(`${action} requires messageId.`);
-      if ((action === "send" || action === "edit") && !content) throw new Error(`${action} requires content.`);
-      const destructive = action === "delete";
-      const expected = messageId ? `DELETE MESSAGE ${channelId}/${messageId}` : undefined;
-      if (dryRun) return jsonResult({ dryRun: true, action, channelId, messageId, content, expectedConfirmation: expected });
+      const channelRoot = `/channels/${channelId}`;
+      if (action === "list_pins") {
+        const query = new URLSearchParams({ limit: String(limit) });
+        if (before !== undefined) query.set("before", before);
+        return jsonResult(await client.request("GET", `${channelRoot}/messages/pins?${query}`));
+      }
+      if (action !== "send" && messageId === undefined) throw new Error(`${action} requires messageId.`);
+      const messageRoute = `${channelRoot}/messages/${messageId ?? ""}`;
+      if (action === "get") return jsonResult(await client.request("GET", messageRoute));
+      const payload = { ...(body ?? {}), ...(content === undefined ? {} : { content }) };
+      if ((action === "send" || action === "edit") && Object.keys(payload).length === 0) {
+        throw new Error(`${action} requires content or a non-empty body.`);
+      }
+      const destructive = action === "delete" || action === "crosspost";
+      const expected = action === "delete"
+        ? `DELETE MESSAGE ${channelId}/${messageId}`
+        : action === "crosspost"
+          ? `CROSSPOST MESSAGE ${channelId}/${messageId}`
+          : undefined;
+      if (dryRun) return jsonResult({ dryRun: true, action, channelId, messageId, body: payload, expectedConfirmation: expected });
       client.policy.assertWrite({ operation: `${action} message`, destructive, confirmation: confirm, expectedConfirmation: expected });
-      if (action === "send") return jsonResult(await client.request("POST", `/channels/${channelId}/messages`, { body: { content }, reason }));
-      if (action === "edit") return jsonResult(await client.request("PATCH", `/channels/${channelId}/messages/${messageId}`, { body: { content }, reason }));
-      if (action === "delete") await client.request("DELETE", `/channels/${channelId}/messages/${messageId}`, { reason });
-      if (action === "pin") await client.request("PUT", `/channels/${channelId}/pins/${messageId}`, { reason });
-      if (action === "unpin") await client.request("DELETE", `/channels/${channelId}/pins/${messageId}`, { reason });
+      if (action === "send") return jsonResult(await client.request("POST", `${channelRoot}/messages`, { body: payload, reason }));
+      if (action === "edit") return jsonResult(await client.request("PATCH", messageRoute, { body: payload, reason }));
+      if (action === "crosspost") return jsonResult(await client.request("POST", `${messageRoute}/crosspost`, { reason }));
+      if (action === "delete") await client.request("DELETE", messageRoute, { reason });
+      if (action === "pin") await client.request("PUT", `${channelRoot}/messages/pins/${messageId}`, { reason });
+      if (action === "unpin") await client.request("DELETE", `${channelRoot}/messages/pins/${messageId}`, { reason });
       return jsonResult({ ok: true, action, messageId });
     }
   );

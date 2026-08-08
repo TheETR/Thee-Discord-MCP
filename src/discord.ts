@@ -57,6 +57,15 @@ export class DiscordClient {
     }
   }
 
+  async assertDmChannel(channelId: string, userId: string): Promise<void> {
+    this.policy.assertUser(userId);
+    const channel = await this.request<{ type?: number; recipients?: Array<{ id?: string }> }>("GET", `/channels/${channelId}`);
+    const recipientIds = (channel.recipients ?? []).map((recipient) => recipient.id).filter((id): id is string => Boolean(id));
+    if (channel.type !== 1 || recipientIds.length !== 1 || recipientIds[0] !== userId) {
+      throw new Error(`Channel ${channelId} is not the allowlisted one-to-one DM for user ${userId}.`);
+    }
+  }
+
   async assertScopedRoute(guildId: string, route: string, method: Method = "GET", body?: unknown): Promise<void> {
     this.policy.assertGuild(guildId);
     const normalized = route.startsWith("/") ? route : `/${route}`;
