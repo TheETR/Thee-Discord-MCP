@@ -1,10 +1,17 @@
+import { randomUUID } from "node:crypto";
+
 import { ChannelFlags, ChannelType } from "discord-api-types/v10";
 import { z } from "zod";
 
 import { changeDigest } from "./confirmation.js";
 import type { DiscordClient } from "./discord.js";
 import { permissionBits } from "./permissions.js";
-import type { GuildState, StateStore } from "./state.js";
+import type {
+  BlueprintJournal,
+  BlueprintJournalAttempt,
+  GuildState,
+  StateStore
+} from "./state.js";
 
 const SnowflakeSchema = z.string().regex(/^\d{17,20}$/);
 const ResourceKeySchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/);
@@ -91,12 +98,35 @@ export const ServerBlueprintSchema = z.object({
   roles: z.array(RoleBlueprintSchema).default([]),
   categories: z.array(CategoryBlueprintSchema).default([]),
   channels: z.array(ChannelBlueprintSchema).default([])
+}).superRefine((blueprint, context) => {
+  const assertUnique = (entries: Array<{ key: string }>, label: string, path: (string | number)[]) => {
+    const seen = new Set<string>();
+    entries.forEach((entry, index) => {
+      if (seen.has(entry.key)) {
+        context.addIssue({
+          code: "custom",
+          message: `Duplicate ${label} key '${entry.key}'.`,
+          path: [...path, index, "key"]
+        });
+      }
+      seen.add(entry.key);
+    });
+  };
+
+  assertUnique(blueprint.roles, "role", ["roles"]);
+  assertUnique([...blueprint.categories, ...blueprint.channels], "channel/category", ["channels"]);
+  assertUnique(
+    blueprint.channels.flatMap((channel) => channel.messages ?? []),
+    "message",
+    ["channels"]
+  );
 });
 
 export type ServerBlueprint = z.infer<typeof ServerBlueprintSchema>;
 type RoleBlueprint = z.infer<typeof RoleBlueprintSchema>;
 type CategoryBlueprint = z.infer<typeof CategoryBlueprintSchema>;
 type ChannelBlueprint = z.infer<typeof ChannelBlueprintSchema>;
+type GuildBlueprint = z.infer<typeof GuildBlueprintSchema>;
 type PermissionOverwrite = z.infer<typeof PermissionOverwriteSchema>;
 
 interface SnapshotRole {
@@ -119,6 +149,11 @@ interface SnapshotChannel {
   rate_limit_per_user?: number;
   bitrate?: number;
   user_limit?: number;
+  permission_overwrites?: Array<Record<string, unknown>>;
+  available_tags?: Array<Record<string, unknown>>;
+  default_sort_order?: number | null;
+  default_forum_layout?: number;
+  flags?: number;
 }
 
 export interface GuildSnapshot {
@@ -159,21 +194,114 @@ function roleDiff(role: RoleBlueprint, existing: SnapshotRole): Record<string, u
   return changedFields(desired, existing as unknown as Record<string, unknown>);
 }
 
-function channelDiff(channel: ChannelBlueprint | CategoryBlueprint, existing: SnapshotChannel): Record<string, unknown> {
+function normalizeOverwrites(value: Array<Record<string, unknown>> | undefined) {
+  return (value ?? []).map((overwrite) => ({
+    id: String(overwrite.id),
+    type: Number(overwrite.type),
+    allow: String(overwrite.allow ?? "0"),
+    deny: String(overwrite.deny ?? "0")
+  })).sort((left, right) => `${left.type}:${left.id}`.localeCompare(`${right.type}:${right.id}`));
+}
+
+function guildBodyForPlan(guild: GuildBlueprint, state: GuildState): Record<string, unknown> {
+  const plannedChannel = (key: string | undefined) => key === undefined
+    ? undefined
+    : state.channels[key] ?? `unresolved:${key}`;
+  return withoutUndefined({
+    name: guild.name,
+    description: guild.description,
+    preferred_locale: guild.preferredLocale,
+    verification_level: guild.verificationLevel,
+    default_message_notifications: guild.defaultMessageNotifications,
+    explicit_content_filter: guild.explicitContentFilter,
+    rules_channel_id: plannedChannel(guild.rulesChannelKey),
+    public_updates_channel_id: plannedChannel(guild.publicUpdatesChannelKey),
+    safety_alerts_channel_id: plannedChannel(guild.safetyAlertsChannelKey)
+  });
+}
+
+function guildBodyForApply(guild: GuildBlueprint, state: GuildState): Record<string, unknown> {
+  const resolvedChannel = (key: string | undefined) => {
+    if (key === undefined) return undefined;
+    const id = state.channels[key];
+    if (id === undefined) throw new Error(`Guild setting references unresolved channel key '${key}'.`);
+    return id;
+  };
+  return withoutUndefined({
+    name: guild.name,
+    description: guild.description,
+    preferred_locale: guild.preferredLocale,
+    verification_level: guild.verificationLevel,
+    default_message_notifications: guild.defaultMessageNotifications,
+    explicit_content_filter: guild.explicitContentFilter,
+    rules_channel_id: resolvedChannel(guild.rulesChannelKey),
+    public_updates_channel_id: resolvedChannel(guild.publicUpdatesChannelKey),
+    safety_alerts_channel_id: resolvedChannel(guild.safetyAlertsChannelKey)
+  });
+}
+
+function planOverwrites(
+  overwrites: readonly PermissionOverwrite[] | undefined,
+  guildId: string,
+  state: GuildState
+) {
+  return overwrites?.map((overwrite) => ({
+    id: overwrite.target === "@everyone"
+      ? guildId
+      : state.roles[overwrite.target] ?? (/^\d{17,20}$/.test(overwrite.target) ? overwrite.target : `unresolved:${overwrite.target}`),
+    type: overwrite.type === "role" ? 0 : 1,
+    allow: permissionBits(overwrite.allow),
+    deny: permissionBits(overwrite.deny)
+  }));
+}
+
+function normalizeForumTags(value: Array<Record<string, unknown>> | undefined) {
+  return (value ?? []).map((tag) => ({
+    name: tag.name,
+    moderated: tag.moderated ?? false,
+    emoji_id: tag.emoji_id ?? null,
+    emoji_name: tag.emoji_name ?? null
+  }));
+}
+
+function channelDiff(
+  channel: ChannelBlueprint | CategoryBlueprint,
+  existing: SnapshotChannel,
+  guildId: string,
+  state: GuildState
+): Record<string, unknown> {
+  const desiredOverwrites = planOverwrites(channel.overwrites, guildId, state);
   const desired = withoutUndefined({
     name: channel.name,
     position: channel.position,
+    permission_overwrites: desiredOverwrites === undefined ? undefined : normalizeOverwrites(desiredOverwrites),
     ...(isChannel(channel)
       ? {
+          parent_id: channel.categoryKey
+            ? state.channels[channel.categoryKey] ?? `unresolved:${channel.categoryKey}`
+            : undefined,
           topic: channel.topic,
           nsfw: channel.nsfw,
           rate_limit_per_user: channel.slowmodeSeconds,
           bitrate: channel.bitrate,
-          user_limit: channel.userLimit
+          user_limit: channel.userLimit,
+          available_tags: channel.forumTags === undefined ? undefined : normalizeForumTags(forumTags(channel)),
+          default_sort_order: channel.defaultSortOrder === "latest_activity" ? 1 : channel.defaultSortOrder === "creation_date" ? 0 : undefined,
+          default_forum_layout: channel.defaultForumLayout === "list" ? 1 : channel.defaultForumLayout === "gallery" ? 2 : channel.defaultForumLayout === "not_set" ? 0 : undefined,
+          flags: channel.requireTag === undefined
+            ? undefined
+            : channel.requireTag
+              ? (existing.flags ?? 0) | ChannelFlags.RequireTag
+              : (existing.flags ?? 0) & ~ChannelFlags.RequireTag
         }
       : {})
   });
-  return changedFields(desired, existing as unknown as Record<string, unknown>);
+  const normalizedExisting = {
+    ...existing,
+    permission_overwrites: normalizeOverwrites(existing.permission_overwrites),
+    available_tags: normalizeForumTags(existing.available_tags)
+  };
+  return changedFields(desired, normalizedExisting as unknown as Record<string, unknown>);
 }
 
 function isChannel(value: ChannelBlueprint | CategoryBlueprint): value is ChannelBlueprint {
@@ -213,7 +341,10 @@ export function planBlueprint(
   const actions: BlueprintAction[] = [];
 
   if (blueprint.guild && Object.keys(blueprint.guild).length > 0) {
-    actions.push({ action: "modify", resource: "guild", key: snapshot.guild.id });
+    const changes = changedFields(guildBodyForPlan(blueprint.guild, state), snapshot.guild);
+    if (Object.keys(changes).length > 0) {
+      actions.push({ action: "modify", resource: "guild", key: snapshot.guild.id, changes });
+    }
   }
 
   for (const role of blueprint.roles) {
@@ -239,7 +370,7 @@ export function planBlueprint(
       actions.push({ action: "create", resource: "category", key: category.key });
       continue;
     }
-    const changes = channelDiff(category, existing);
+    const changes = channelDiff(category, existing, snapshot.guild.id, state);
     if (Object.keys(changes).length > 0) {
       actions.push({ action: "update", resource: "category", key: category.key, id: existing.id, changes });
     }
@@ -256,7 +387,7 @@ export function planBlueprint(
     if (!existing) {
       actions.push({ action: "create", resource: "channel", key: channel.key });
     } else {
-      const changes = channelDiff(channel, existing);
+      const changes = channelDiff(channel, existing, snapshot.guild.id, state);
       if (Object.keys(changes).length > 0) {
         actions.push({ action: "update", resource: "channel", key: channel.key, id: existing.id, changes });
       }
@@ -313,7 +444,11 @@ function forumTags(channel: ChannelBlueprint): Record<string, unknown>[] | undef
   }));
 }
 
-function channelBody(channel: ChannelBlueprint, state: GuildState): Record<string, unknown> {
+function channelBody(
+  channel: ChannelBlueprint,
+  state: GuildState,
+  existing?: SnapshotChannel
+): Record<string, unknown> {
   return withoutUndefined({
     name: channel.name,
     type: channelTypes[channel.type],
@@ -327,7 +462,11 @@ function channelBody(channel: ChannelBlueprint, state: GuildState): Record<strin
     available_tags: forumTags(channel),
     default_sort_order: channel.defaultSortOrder === "latest_activity" ? 1 : channel.defaultSortOrder === "creation_date" ? 0 : undefined,
     default_forum_layout: channel.defaultForumLayout === "list" ? 1 : channel.defaultForumLayout === "gallery" ? 2 : channel.defaultForumLayout === "not_set" ? 0 : undefined,
-    flags: channel.requireTag === undefined ? undefined : channel.requireTag ? ChannelFlags.RequireTag : 0
+    flags: channel.requireTag === undefined
+      ? undefined
+      : channel.requireTag
+        ? (existing?.flags ?? 0) | ChannelFlags.RequireTag
+        : (existing?.flags ?? 0) & ~ChannelFlags.RequireTag
   });
 }
 
@@ -337,6 +476,79 @@ export function renderMessageContent(content: string, state: GuildState): string
     if (!channelId) throw new Error(`Message references unresolved channel key '${key}'.`);
     return `<#${channelId}>`;
   });
+}
+
+export function blueprintExecutionDigests(
+  blueprint: ServerBlueprint,
+  snapshot: GuildSnapshot,
+  actions: BlueprintAction[]
+) {
+  const projectedSnapshot = {
+    guild: {
+      id: snapshot.guild.id,
+      name: snapshot.guild.name,
+      description: snapshot.guild.description ?? null,
+      preferred_locale: snapshot.guild.preferred_locale ?? null,
+      verification_level: snapshot.guild.verification_level ?? null,
+      default_message_notifications: snapshot.guild.default_message_notifications ?? null,
+      explicit_content_filter: snapshot.guild.explicit_content_filter ?? null,
+      rules_channel_id: snapshot.guild.rules_channel_id ?? null,
+      public_updates_channel_id: snapshot.guild.public_updates_channel_id ?? null,
+      safety_alerts_channel_id: snapshot.guild.safety_alerts_channel_id ?? null
+    },
+    roles: snapshot.roles.map((role) => ({
+      id: role.id,
+      name: role.name,
+      color: role.color,
+      hoist: role.hoist,
+      mentionable: role.mentionable,
+      permissions: role.permissions
+    })).sort((left, right) => left.id.localeCompare(right.id)),
+    channels: snapshot.channels.map((channel) => ({
+      id: channel.id,
+      name: channel.name,
+      type: channel.type,
+      parent_id: channel.parent_id ?? null,
+      topic: channel.topic ?? null,
+      position: channel.position ?? null,
+      nsfw: channel.nsfw ?? false,
+      rate_limit_per_user: channel.rate_limit_per_user ?? 0,
+      bitrate: channel.bitrate ?? null,
+      user_limit: channel.user_limit ?? null,
+      permission_overwrites: normalizeOverwrites(channel.permission_overwrites),
+      available_tags: normalizeForumTags(channel.available_tags),
+      default_sort_order: channel.default_sort_order ?? null,
+      default_forum_layout: channel.default_forum_layout ?? null,
+      flags: channel.flags ?? 0
+    })).sort((left, right) => left.id.localeCompare(right.id))
+  };
+  return {
+    blueprintDigest: changeDigest(blueprint),
+    snapshotDigest: changeDigest(projectedSnapshot),
+    planDigest: changeDigest(actions)
+  };
+}
+
+function journalAttempt(journal: BlueprintJournal): BlueprintJournalAttempt {
+  return {
+    id: journal.id,
+    status: journal.status,
+    attempt: journal.attempt,
+    blueprintDigest: journal.blueprintDigest,
+    planDigest: journal.planDigest,
+    snapshotDigest: journal.snapshotDigest,
+    startedAt: journal.startedAt,
+    updatedAt: journal.updatedAt,
+    actions: journal.actions.map((action) => ({ ...action })),
+    ...(journal.finalAppliedPlanDigest === undefined
+      ? {}
+      : { finalAppliedPlanDigest: journal.finalAppliedPlanDigest })
+  };
+}
+
+function journalError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.slice(0, 2_000);
 }
 
 export async function applyBlueprint(args: {
@@ -354,13 +566,14 @@ export async function applyBlueprint(args: {
   const guildState = store.guild(guildId);
   const { blueprint, actions } = planBlueprint(args.blueprintInput, snapshot, guildState);
   client.policy.assertBulkSize(actions.length);
+  const digests = blueprintExecutionDigests(blueprint, snapshot, actions);
 
   const privileged = blueprint.roles.some((role) => role.permissions !== undefined)
     || blueprint.categories.some((category) => category.overwrites !== undefined)
     || blueprint.channels.some((channel) => channel.overwrites !== undefined)
     || blueprint.guild !== undefined;
   const expectedConfirmation = privileged
-    ? `APPLY PRIVILEGED BLUEPRINT ${guildId} ${changeDigest(blueprint)}`
+    ? `APPLY PRIVILEGED BLUEPRINT ${guildId} ${changeDigest(digests)}`
     : undefined;
 
   if (dryRun) {
@@ -368,6 +581,7 @@ export async function applyBlueprint(args: {
       dryRun: true,
       actionCount: actions.length,
       actions,
+      preconditions: digests,
       expectedConfirmation: expectedConfirmation === undefined
         ? undefined
         : client.policy.issueConfirmation(expectedConfirmation)
@@ -380,13 +594,86 @@ export async function applyBlueprint(args: {
     expectedConfirmation
   });
 
+  const previous = store.blueprintJournal(guildId);
+  const now = new Date().toISOString();
+  const recovering = previous !== undefined
+    && previous.status !== "completed"
+    && previous.blueprintDigest === digests.blueprintDigest;
+  const history = previous === undefined
+    ? []
+    : [...previous.history, journalAttempt(previous)].slice(-20);
+  const journal: BlueprintJournal = {
+    id: randomUUID(),
+    guildId,
+    status: "in_progress",
+    attempt: (previous?.attempt ?? 0) + 1,
+    ...digests,
+    startedAt: now,
+    updatedAt: now,
+    actions: actions.map((action) => ({
+      action: action.action,
+      resource: action.resource,
+      key: action.key,
+      ...(action.id === undefined ? {} : { id: action.id }),
+      status: "pending"
+    })),
+    history,
+    ...(recovering ? { recoveredFrom: previous.id } : {}),
+    ...(!recovering && previous !== undefined ? { supersedes: previous.id } : {})
+  };
+  store.setBlueprintJournal(guildId, journal);
+  await store.save();
+
+  const plannedAction = (resource: BlueprintAction["resource"], key: string) => {
+    const action = actions.find((candidate) => candidate.resource === resource && candidate.key === key);
+    if (action === undefined) return undefined;
+    const entry = journal.actions.find((candidate) => candidate.resource === resource && candidate.key === key);
+    if (entry === undefined) throw new Error(`Journal entry missing for ${resource}:${key}.`);
+    return { action, entry };
+  };
+
+  const runPlanned = async <T>(
+    planned: NonNullable<ReturnType<typeof plannedAction>>,
+    operation: () => Promise<{ value: T; resultId?: string }>
+  ): Promise<T> => {
+    planned.entry.status = "running";
+    planned.entry.startedAt = new Date().toISOString();
+    journal.updatedAt = planned.entry.startedAt;
+    await store.save();
+    try {
+      const result = await operation();
+      planned.entry.status = "completed";
+      planned.entry.finishedAt = new Date().toISOString();
+      if (result.resultId !== undefined) planned.entry.resultId = result.resultId;
+      journal.updatedAt = planned.entry.finishedAt;
+      await store.save();
+      return result.value;
+    } catch (error) {
+      planned.entry.status = "failed";
+      planned.entry.finishedAt = new Date().toISOString();
+      planned.entry.error = journalError(error);
+      journal.status = "failed";
+      journal.updatedAt = planned.entry.finishedAt;
+      await store.save();
+      throw error;
+    }
+  };
+
   for (const role of blueprint.roles) {
     const existing = byTrackedOrName(snapshot.roles, guildState.roles[role.key], role.name);
+    const planned = plannedAction("role", role.key);
+    if (planned === undefined) {
+      if (existing !== undefined) guildState.roles[role.key] = existing.id;
+      continue;
+    }
     const body = roleBody(role);
-    const resolved = existing
-      ? await client.request<SnapshotRole>("PATCH", `/guilds/${guildId}/roles/${existing.id}`, { body, reason })
-      : await client.request<SnapshotRole>("POST", `/guilds/${guildId}/roles`, { body, reason });
-    guildState.roles[role.key] = resolved.id;
+    await runPlanned(planned, async () => {
+      const resolved = existing
+        ? await client.request<SnapshotRole>("PATCH", `/guilds/${guildId}/roles/${existing.id}`, { body, reason })
+        : await client.request<SnapshotRole>("POST", `/guilds/${guildId}/roles`, { body, reason });
+      guildState.roles[role.key] = resolved.id;
+      return { value: resolved, resultId: resolved.id };
+    });
   }
 
   for (const category of blueprint.categories) {
@@ -396,16 +683,24 @@ export async function applyBlueprint(args: {
       category.name,
       (channel) => channel.type === ChannelType.GuildCategory
     );
+    const planned = plannedAction("category", category.key);
+    if (planned === undefined) {
+      if (existing !== undefined) guildState.channels[category.key] = existing.id;
+      continue;
+    }
     const body = withoutUndefined({
       name: category.name,
       type: ChannelType.GuildCategory,
       position: category.position,
       permission_overwrites: await resolveOverwrites(category.overwrites, guildId, guildState)
     });
-    const resolved = existing
-      ? await client.request<SnapshotChannel>("PATCH", `/channels/${existing.id}`, { body, reason })
-      : await client.request<SnapshotChannel>("POST", `/guilds/${guildId}/channels`, { body, reason });
-    guildState.channels[category.key] = resolved.id;
+    await runPlanned(planned, async () => {
+      const resolved = existing
+        ? await client.request<SnapshotChannel>("PATCH", `/channels/${existing.id}`, { body, reason })
+        : await client.request<SnapshotChannel>("POST", `/guilds/${guildId}/channels`, { body, reason });
+      guildState.channels[category.key] = resolved.id;
+      return { value: resolved, resultId: resolved.id };
+    });
   }
 
   for (const channel of blueprint.channels) {
@@ -416,45 +711,96 @@ export async function applyBlueprint(args: {
       channel.name,
       (candidate) => candidate.type === type
     );
-    const body = {
-      ...channelBody(channel, guildState),
-      permission_overwrites: await resolveOverwrites(channel.overwrites, guildId, guildState)
-    };
-    const resolved = existing
-      ? await client.request<SnapshotChannel>("PATCH", `/channels/${existing.id}`, { body, reason })
-      : await client.request<SnapshotChannel>("POST", `/guilds/${guildId}/channels`, { body, reason });
-    guildState.channels[channel.key] = resolved.id;
+    const channelAction = plannedAction("channel", channel.key);
+    let resolved = existing;
+    if (channelAction !== undefined) {
+      const body = {
+        ...channelBody(channel, guildState, existing),
+        permission_overwrites: await resolveOverwrites(channel.overwrites, guildId, guildState)
+      };
+      resolved = await runPlanned(channelAction, async () => {
+        const result = existing
+          ? await client.request<SnapshotChannel>("PATCH", `/channels/${existing.id}`, { body, reason })
+          : await client.request<SnapshotChannel>("POST", `/guilds/${guildId}/channels`, { body, reason });
+        guildState.channels[channel.key] = result.id;
+        return { value: result, resultId: result.id };
+      });
+    } else if (existing !== undefined) {
+      guildState.channels[channel.key] = existing.id;
+    }
+    if (resolved === undefined) throw new Error(`Channel '${channel.key}' was not resolved during blueprint execution.`);
 
     for (const message of channel.messages ?? []) {
-      if (guildState.messages[message.key]) continue;
-      const sent = await client.request<{ id: string }>("POST", `/channels/${resolved.id}/messages`, {
-        body: { content: renderMessageContent(message.content, guildState) },
-        reason
+      const messageAction = plannedAction("message", message.key);
+      if (messageAction === undefined) continue;
+      await runPlanned(messageAction, async () => {
+        const nonce = changeDigest({ guildId, blueprintDigest: digests.blueprintDigest, messageKey: message.key });
+        const recent = await client.request<Array<{ id: string; nonce?: string | number | null }>>(
+          "GET",
+          `/channels/${resolved.id}/messages?limit=100`
+        );
+        let sent = recent.find((candidate) => String(candidate.nonce ?? "") === nonce);
+        if (sent === undefined) {
+          sent = await client.request<{ id: string; nonce?: string | number | null }>(
+            "POST",
+            `/channels/${resolved.id}/messages`,
+            {
+              body: {
+                content: renderMessageContent(message.content, guildState),
+                nonce,
+                enforce_nonce: true
+              },
+              reason
+            }
+          );
+        }
+        guildState.messages[message.key] = sent.id;
+        if (message.pin) {
+          await client.request("PUT", `/channels/${resolved.id}/pins/${sent.id}`, { reason });
+        }
+        return { value: sent, resultId: sent.id };
       });
-      guildState.messages[message.key] = sent.id;
-      if (message.pin) {
-        await client.request("PUT", `/channels/${resolved.id}/pins/${sent.id}`, { reason });
-      }
     }
   }
 
   if (blueprint.guild) {
-    const guildBody = withoutUndefined({
-      name: blueprint.guild.name,
-      description: blueprint.guild.description,
-      preferred_locale: blueprint.guild.preferredLocale,
-      verification_level: blueprint.guild.verificationLevel,
-      default_message_notifications: blueprint.guild.defaultMessageNotifications,
-      explicit_content_filter: blueprint.guild.explicitContentFilter,
-      rules_channel_id: blueprint.guild.rulesChannelKey ? guildState.channels[blueprint.guild.rulesChannelKey] : undefined,
-      public_updates_channel_id: blueprint.guild.publicUpdatesChannelKey ? guildState.channels[blueprint.guild.publicUpdatesChannelKey] : undefined,
-      safety_alerts_channel_id: blueprint.guild.safetyAlertsChannelKey ? guildState.channels[blueprint.guild.safetyAlertsChannelKey] : undefined
-    });
-    if (Object.keys(guildBody).length > 0) {
-      await client.request("PATCH", `/guilds/${guildId}`, { body: guildBody, reason });
+    const guildBody = guildBodyForApply(blueprint.guild, guildState);
+    const guildAction = plannedAction("guild", guildId);
+    if (Object.keys(guildBody).length > 0 && guildAction !== undefined) {
+      await runPlanned(guildAction, async () => ({
+        value: await client.request("PATCH", `/guilds/${guildId}`, { body: guildBody, reason }),
+        resultId: guildId
+      }));
     }
   }
 
+  const incomplete = journal.actions.filter((action) => action.status !== "completed");
+  if (incomplete.length > 0) {
+    journal.status = "failed";
+    journal.updatedAt = new Date().toISOString();
+    await store.save();
+    throw new Error(`Blueprint execution left ${incomplete.length} journal actions incomplete.`);
+  }
+  journal.status = "completed";
+  journal.updatedAt = new Date().toISOString();
+  journal.finalAppliedPlanDigest = changeDigest({
+    ...digests,
+    actions: journal.actions.map(({ action, resource, key, status, resultId }) => ({
+      action,
+      resource,
+      key,
+      status,
+      ...(resultId === undefined ? {} : { resultId })
+    }))
+  });
   await store.save();
-  return { dryRun: false, actionCount: actions.length, actions, state: guildState };
+  return {
+    dryRun: false,
+    actionCount: actions.length,
+    actions,
+    preconditions: digests,
+    state: guildState,
+    journal: journalAttempt(journal),
+    ...(journal.recoveredFrom === undefined ? {} : { recoveredFrom: journal.recoveredFrom })
+  };
 }

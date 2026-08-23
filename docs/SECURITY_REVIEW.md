@@ -33,13 +33,11 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 - Webhook tokens, URLs, and uploaded data URIs are redacted from previews and results.
 - Snapshot exports apply the same recursive webhook credential redaction as named webhook tools, including optional-request envelopes.
 - Blueprint state paths stay inside the package directory. Loaded state is schema-validated, direct symlinks are rejected, parent directories are revalidated against symlink/junction escape before write and replace, and saves use a unique atomic replacement file.
+- Privileged blueprint approval binds to the blueprint digest, exact action-plan digest, and a stable projection of live guild preconditions; volatile presence/member counts are excluded.
+- Blueprint execution writes a versioned journal before and around every action, records returned resource IDs and failures, links matching recovery attempts, uses deterministic message nonces for uncertain retries, and seals successful runs with a final applied-plan digest.
 - Write tools default to dry-run and attach audit reasons where Discord supports them.
 
 ## Residual work
-
-### P1
-
-- Add a blueprint execution journal with preconditions, per-action results, restart recovery, and a final applied-plan digest. Discord does not offer multi-resource transactions, so partial failure must be explicit and recoverable.
 
 ### P2
 
@@ -57,3 +55,5 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 ## Release gate
 
 A release is ready only when `pnpm check` passes on Windows and Linux, package contents contain no secrets or machine-specific paths, the MCP handshake matches the documented tool/operation inventory, and every new write surface has an explicit risk classification with targeted tests.
+
+Discord does not provide a multi-resource transaction or rollback primitive. Journaling makes partial success explicit and recoverable, but operators must still inspect a failed attempt before retrying.

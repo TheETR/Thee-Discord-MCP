@@ -28,13 +28,40 @@ describe("StateStore", () => {
     const loaded = new StateStore(path);
     await loaded.load();
     expect(loaded.guild("123456789012345678").channels.general).toBe("234567890123456789");
-    expect(JSON.parse(await readFile(path, "utf8")).version).toBe(1);
+    expect(JSON.parse(await readFile(path, "utf8")).version).toBe(2);
   });
 
   it("rejects malformed resource IDs and prototype-like keys", async () => {
     const path = await temporaryStatePath();
     await writeFile(path, '{"version":1,"guilds":{"123456789012345678":{"roles":{"__proto__":"bad"},"channels":{},"messages":{}}}}');
     await expect(new StateStore(path).load()).rejects.toThrow(/Invalid role state entry/);
+  });
+
+  it("migrates a validated version-1 state file when saved", async () => {
+    const path = await temporaryStatePath();
+    await writeFile(path, JSON.stringify({
+      version: 1,
+      guilds: {
+        "123456789012345678": { roles: {}, channels: {}, messages: {} }
+      }
+    }));
+    const store = new StateStore(path);
+    await store.load();
+    await store.save();
+    const migrated = JSON.parse(await readFile(path, "utf8"));
+    expect(migrated).toMatchObject({ version: 2, blueprintJournals: {} });
+  });
+
+  it("rejects malformed blueprint journal data", async () => {
+    const path = await temporaryStatePath();
+    await writeFile(path, JSON.stringify({
+      version: 2,
+      guilds: {},
+      blueprintJournals: {
+        "123456789012345678": { status: "completed", actions: "not-an-array" }
+      }
+    }));
+    await expect(new StateStore(path).load()).rejects.toThrow(/blueprint journal/);
   });
 
   it.runIf(process.platform !== "win32")("refuses a symbolic-link state file", async () => {

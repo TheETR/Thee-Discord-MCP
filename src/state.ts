@@ -8,9 +8,45 @@ export interface GuildState {
   messages: Record<string, string>;
 }
 
+export type BlueprintJournalStatus = "in_progress" | "completed" | "failed";
+export type BlueprintJournalActionStatus = "pending" | "running" | "completed" | "failed";
+
+export interface BlueprintJournalAction {
+  action: "create" | "update" | "send" | "modify";
+  resource: "guild" | "role" | "category" | "channel" | "message";
+  key: string;
+  id?: string;
+  status: BlueprintJournalActionStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  resultId?: string;
+  error?: string;
+}
+
+export interface BlueprintJournalAttempt {
+  id: string;
+  status: BlueprintJournalStatus;
+  attempt: number;
+  blueprintDigest: string;
+  planDigest: string;
+  snapshotDigest: string;
+  startedAt: string;
+  updatedAt: string;
+  actions: BlueprintJournalAction[];
+  finalAppliedPlanDigest?: string;
+}
+
+export interface BlueprintJournal extends BlueprintJournalAttempt {
+  guildId: string;
+  recoveredFrom?: string;
+  supersedes?: string;
+  history: BlueprintJournalAttempt[];
+}
+
 interface StateFile {
-  version: 1;
+  version: 2;
   guilds: Record<string, GuildState>;
+  blueprintJournals: Record<string, BlueprintJournal>;
 }
 
 const emptyGuildState = (): GuildState => ({ roles: {}, channels: {}, messages: {} });
@@ -28,12 +64,103 @@ function parseStringMap(value: unknown, label: string): Record<string, string> {
   return Object.fromEntries(entries);
 }
 
+const digest = /^[a-f0-9]{16}$/;
+const journalId = /^[a-f0-9-]{36}$/;
+const journalStatuses = new Set<BlueprintJournalStatus>(["in_progress", "completed", "failed"]);
+const actionStatuses = new Set<BlueprintJournalActionStatus>(["pending", "running", "completed", "failed"]);
+const actionNames = new Set<BlueprintJournalAction["action"]>(["create", "update", "send", "modify"]);
+const resourceNames = new Set<BlueprintJournalAction["resource"]>(["guild", "role", "category", "channel", "message"]);
+
+function requiredString(record: Record<string, unknown>, key: string, pattern?: RegExp): string {
+  const value = record[key];
+  if (typeof value !== "string" || value.length === 0 || value.length > 2_000 || (pattern && !pattern.test(value))) {
+    throw new Error(`Invalid blueprint journal ${key}.`);
+  }
+  return value;
+}
+
+function parseJournalAction(value: unknown): BlueprintJournalAction {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Invalid blueprint journal action.");
+  }
+  const record = value as Record<string, unknown>;
+  const action = requiredString(record, "action") as BlueprintJournalAction["action"];
+  const resource = requiredString(record, "resource") as BlueprintJournalAction["resource"];
+  const status = requiredString(record, "status") as BlueprintJournalActionStatus;
+  if (!actionNames.has(action) || !resourceNames.has(resource) || !actionStatuses.has(status)) {
+    throw new Error("Invalid blueprint journal action enum.");
+  }
+  const parsed: BlueprintJournalAction = {
+    action,
+    resource,
+    key: requiredString(record, "key", resourceKey),
+    status
+  };
+  for (const key of ["id", "resultId"] as const) {
+    if (record[key] !== undefined) parsed[key] = requiredString(record, key, snowflake);
+  }
+  for (const key of ["startedAt", "finishedAt"] as const) {
+    if (record[key] !== undefined) parsed[key] = requiredString(record, key);
+  }
+  if (record.error !== undefined) parsed.error = requiredString(record, "error");
+  return parsed;
+}
+
+function parseJournalAttempt(value: unknown): BlueprintJournalAttempt {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Invalid blueprint journal attempt.");
+  }
+  const record = value as Record<string, unknown>;
+  const status = requiredString(record, "status") as BlueprintJournalStatus;
+  if (!journalStatuses.has(status)) throw new Error("Invalid blueprint journal status.");
+  if (!Number.isInteger(record.attempt) || (record.attempt as number) < 1 || (record.attempt as number) > 1_000_000) {
+    throw new Error("Invalid blueprint journal attempt number.");
+  }
+  if (!Array.isArray(record.actions) || record.actions.length > 1_000) {
+    throw new Error("Invalid blueprint journal action list.");
+  }
+  const parsed: BlueprintJournalAttempt = {
+    id: requiredString(record, "id", journalId),
+    status,
+    attempt: record.attempt as number,
+    blueprintDigest: requiredString(record, "blueprintDigest", digest),
+    planDigest: requiredString(record, "planDigest", digest),
+    snapshotDigest: requiredString(record, "snapshotDigest", digest),
+    startedAt: requiredString(record, "startedAt"),
+    updatedAt: requiredString(record, "updatedAt"),
+    actions: record.actions.map(parseJournalAction)
+  };
+  if (record.finalAppliedPlanDigest !== undefined) {
+    parsed.finalAppliedPlanDigest = requiredString(record, "finalAppliedPlanDigest", digest);
+  }
+  return parsed;
+}
+
+function parseJournal(value: unknown, expectedGuildId: string): BlueprintJournal {
+  const attempt = parseJournalAttempt(value);
+  const record = value as Record<string, unknown>;
+  const guildId = requiredString(record, "guildId", snowflake);
+  if (guildId !== expectedGuildId) throw new Error("Blueprint journal guild key mismatch.");
+  if (!Array.isArray(record.history) || record.history.length > 20) {
+    throw new Error("Invalid blueprint journal history.");
+  }
+  const parsed: BlueprintJournal = {
+    ...attempt,
+    guildId,
+    history: record.history.map(parseJournalAttempt)
+  };
+  for (const key of ["recoveredFrom", "supersedes"] as const) {
+    if (record[key] !== undefined) parsed[key] = requiredString(record, key, journalId);
+  }
+  return parsed;
+}
+
 function parseStateFile(value: unknown): StateFile {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Unsupported state file format.");
   }
   const candidate = value as Record<string, unknown>;
-  if (candidate.version !== 1 || typeof candidate.guilds !== "object" || candidate.guilds === null || Array.isArray(candidate.guilds)) {
+  if ((candidate.version !== 1 && candidate.version !== 2) || typeof candidate.guilds !== "object" || candidate.guilds === null || Array.isArray(candidate.guilds)) {
     throw new Error("Unsupported state file format.");
   }
   const guilds = Object.fromEntries(Object.entries(candidate.guilds).map(([guildId, guild]) => {
@@ -47,11 +174,19 @@ function parseStateFile(value: unknown): StateFile {
       messages: parseStringMap(record.messages, "message")
     }];
   }));
-  return { version: 1, guilds };
+  const rawJournals = candidate.version === 2 ? candidate.blueprintJournals : {};
+  if (typeof rawJournals !== "object" || rawJournals === null || Array.isArray(rawJournals)) {
+    throw new Error("Invalid blueprint journal map.");
+  }
+  const blueprintJournals = Object.fromEntries(Object.entries(rawJournals).map(([guildId, journal]) => {
+    if (!snowflake.test(guildId)) throw new Error("Invalid blueprint journal guild key.");
+    return [guildId, parseJournal(journal, guildId)];
+  }));
+  return { version: 2, guilds, blueprintJournals };
 }
 
 export class StateStore {
-  private data: StateFile = { version: 1, guilds: {} };
+  private data: StateFile = { version: 2, guilds: {}, blueprintJournals: {} };
 
   constructor(
     private readonly path: string,
@@ -87,6 +222,17 @@ export class StateStore {
     } finally {
       await rm(temporaryPath, { force: true });
     }
+  }
+
+  blueprintJournal(guildId: string): BlueprintJournal | undefined {
+    return this.data.blueprintJournals[guildId];
+  }
+
+  setBlueprintJournal(guildId: string, journal: BlueprintJournal): void {
+    if (!snowflake.test(guildId) || journal.guildId !== guildId) {
+      throw new Error("Blueprint journal guild mismatch.");
+    }
+    this.data.blueprintJournals[guildId] = journal;
   }
 
   private relativeParent(): { root: string; parent: string; relativePath: string } {

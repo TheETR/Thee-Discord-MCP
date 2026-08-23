@@ -24,7 +24,7 @@ A safety-gated Discord administration MCP server built on Discord's official RES
 - Optional one-to-one DMs restricted to an explicit user allowlist and disabled by default
 - Membership Screening rule reads and guarded updates
 - AutoMod rules, onboarding, welcome screen, emojis, and audit-log reads
-- Idempotent JSON blueprints with a dry-run planner
+- Idempotent JSON blueprints with a dry-run planner, snapshot-bound approvals, and restart-aware execution journals
 - Bot and application profile management, including avatar and banner data URIs
 - A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
@@ -55,7 +55,7 @@ Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messag
 | `safe-write` | yes | yes | no | no |
 | `full` | yes | yes | one-time dry-run confirmation | destructive opt-in and one-time dry-run confirmation |
 
-The default is `read-only`. Permission overwrites, role permission changes, guild security settings, and blueprints containing those fields are privileged writes: they require `full` mode and a payload-bound confirmation returned by the matching dry-run, but not the separate destructive opt-in. Confirmations are held only in process memory, expire after `DISCORD_CONFIRMATION_TTL_SECONDS` (five minutes by default), are consumed before the Discord request begins, and become invalid after a server restart. Blueprint application never deletes resources. It creates or updates matching resources and tracks their Discord IDs in `.data/state.json` so reruns do not create duplicates.
+The default is `read-only`. Permission overwrites, role permission changes, guild security settings, and blueprints containing those fields are privileged writes: they require `full` mode and a payload-bound confirmation returned by the matching dry-run, but not the separate destructive opt-in. Confirmations are held only in process memory, expire after `DISCORD_CONFIRMATION_TTL_SECONDS` (five minutes by default), are consumed before the Discord request begins, and become invalid after a server restart. Blueprint approval also binds to the exact planned actions and a stable live-guild precondition snapshot, so drift requires a new dry-run. Blueprint application never deletes unmanaged resources.
 
 ## 1. Create the Discord operator
 
@@ -144,6 +144,8 @@ Recommended flow:
 Blueprint channel mentions use `{{channel:key}}`; they are resolved to real clickable Discord mentions when a message is sent.
 
 The blueprint deliberately performs no deletion. Existing channels or roles with different names are left alone unless their tracked key points to them. Review duplicate or obsolete resources separately before removing anything.
+
+Actual blueprint runs persist a versioned journal before the first Discord write and around every planned action. The journal records precondition, plan, and blueprint digests; per-action pending/running/completed/failed state; returned resource IDs; recovery ancestry; and a final applied-plan digest. Version-1 state files migrate to version 2 on their next save. A retry of the same interrupted blueprint is linked as a recovery attempt, while deterministic message nonces plus a recent-message lookup reduce duplicate guide posts after an uncertain interruption. Discord has no multi-resource transaction or rollback, so inspect failed journals and rerun the same blueprint after correcting the cause.
 
 ## Destructive operations
 

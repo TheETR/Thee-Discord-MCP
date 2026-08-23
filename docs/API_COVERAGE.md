@@ -13,7 +13,7 @@ Thee Discord MCP groups related Discord REST operations into named tools. The cu
 | Expressions | Guild and application emojis, stickers, soundboard sounds |
 | Integrations | Webhooks, integrations, guild/global application commands, linked-role metadata, guild templates |
 | Controlled DMs | One-to-one DM open/read/send/edit/delete for explicitly allowlisted recipients only |
-| Operations | Snapshots, dry-run plans, idempotent blueprints, scoped raw REST |
+| Operations | Snapshots, dry-run plans, journaled/recoverable idempotent blueprints, scoped raw REST |
 
 ## Safety model
 
@@ -25,6 +25,7 @@ Thee Discord MCP groups related Discord REST operations into named tools. The cu
 - Role assignment, AutoMod creation or modification, onboarding replacement, webhook lifecycle changes, and bot/application profile changes use the same privileged gate.
 - Deletions, message bulk deletion, crossposts, early poll termination, prune execution, bulk actions, metadata replacement, and other irreversible actions require full mode, destructive opt-in, and a one-time dry-run confirmation. Tokens are consumed before the Discord request, invalidated by restart, and bulk confirmations include a digest of the exact target set.
 - Dry-run is the default for write tools.
+- Privileged blueprint confirmations bind to the validated blueprint, exact action plan, and stable live-guild precondition snapshot. Actual runs journal every action and final applied-plan digest in the versioned local state file.
 - Raw routes are canonicalized before authorization; ambiguous encodings, dot segments, duplicate separators, fragments, absolute URLs, and mismatched guild/channel IDs in request bodies are rejected.
 - Raw-write confirmations are one-time and include a digest of the exact request body.
 - Sticker and soundboard uploads validate media type and decoded size before a request is sent.
@@ -40,7 +41,7 @@ Thee Discord MCP groups related Discord REST operations into named tools. The cu
 - Indexed message search requires the privileged Message Content intent. Discord returns `Missing Access` when it is disabled.
 - Creating a guild from a template is omitted because it escapes the configured guild boundary.
 - User-account OAuth surfaces, social relationships, and user tokens are not supported. The server operates with a bot token only.
-- The local blueprint state file is confined to the package directory, schema-validated on load, rejected when directly symlinked, protected against symlink/junction parent escape during save, and replaced atomically.
+- The local blueprint state file is confined to the package directory, schema-validated on load, migrated from version 1 to version 2, rejected when directly symlinked, protected against symlink/junction parent escape during save, and replaced atomically.
 - Discord hierarchy, privileged intents, rate limits, and feature availability still apply.
 
 ## Verification
