@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/setup@v2
+        with:
+          version: 11.10.0
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.19
+          cache: pnpm
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, parse, resolve } from "node:path";
+import { dirname, isAbsolute, parse, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
@@ -20,6 +20,15 @@ dotenv.config({ path: resolve(projectRoot, ".env"), quiet: true });
 
 export const ModeSchema = z.enum(["read-only", "safe-write", "full"]);
 export type Mode = z.infer<typeof ModeSchema>;
+
+export function resolveStateFile(path: string): string {
+  const resolved = resolve(projectRoot, path);
+  const projectRelative = relative(projectRoot, resolved);
+  if (projectRelative === "" || projectRelative.startsWith("..") || isAbsolute(projectRelative)) {
+    throw new Error("DISCORD_STATE_FILE must resolve to a file inside the package directory.");
+  }
+  return resolved;
+}
 
 const EnvironmentSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().min(20),
@@ -73,7 +82,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     mode: parsed.data.DISCORD_MODE,
     destructiveEnabled: parsed.data.DISCORD_ENABLE_DESTRUCTIVE.toLowerCase() === "true",
     maxBulkActions: parsed.data.DISCORD_MAX_BULK_ACTIONS,
-    stateFile: resolve(projectRoot, parsed.data.DISCORD_STATE_FILE),
+    stateFile: resolveStateFile(parsed.data.DISCORD_STATE_FILE),
     auditReasonPrefix: parsed.data.DISCORD_AUDIT_REASON_PREFIX
   };
 }

@@ -39,6 +39,24 @@ describe("SafetyPolicy", () => {
     expect(() => policy.assertWrite({ operation: "create channel" })).not.toThrow();
   });
 
+  it("requires full mode and exact confirmation for privileged writes without destructive opt-in", () => {
+    const safeWrite = new SafetyPolicy(config({ mode: "safe-write" }));
+    expect(() => safeWrite.assertWrite({
+      operation: "replace permissions",
+      risk: "privileged",
+      confirmation: "REPLACE PERMISSIONS 123",
+      expectedConfirmation: "REPLACE PERMISSIONS 123"
+    })).toThrow(/privileged.*full/);
+
+    const full = new SafetyPolicy(config({ mode: "full", destructiveEnabled: false }));
+    expect(() => full.assertWrite({
+      operation: "replace permissions",
+      risk: "privileged",
+      confirmation: "REPLACE PERMISSIONS 123",
+      expectedConfirmation: "REPLACE PERMISSIONS 123"
+    })).not.toThrow();
+  });
+
   it("requires full mode, destructive opt-in, and exact confirmation", () => {
     const policy = new SafetyPolicy(config({ mode: "full", destructiveEnabled: true }));
     expect(() => policy.assertWrite({

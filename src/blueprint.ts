@@ -1,14 +1,16 @@
 import { ChannelFlags, ChannelType } from "discord-api-types/v10";
 import { z } from "zod";
 
+import { changeDigest } from "./confirmation.js";
 import type { DiscordClient } from "./discord.js";
 import { permissionBits } from "./permissions.js";
 import type { GuildState, StateStore } from "./state.js";
 
 const SnowflakeSchema = z.string().regex(/^\d{17,20}$/);
+const ResourceKeySchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/);
 
 const PermissionOverwriteSchema = z.object({
-  target: z.string().min(1),
+  target: z.union([z.literal("@everyone"), SnowflakeSchema, ResourceKeySchema]),
   type: z.enum(["role", "member"]).default("role"),
   allow: z.array(z.string()).default([]),
   deny: z.array(z.string()).default([])
@@ -22,13 +24,13 @@ const ForumTagSchema = z.object({
 });
 
 const BlueprintMessageSchema = z.object({
-  key: z.string().min(1).max(100),
+  key: ResourceKeySchema,
   content: z.string().min(1).max(2000),
   pin: z.boolean().default(false)
 });
 
 const RoleBlueprintSchema = z.object({
-  key: z.string().min(1).max(100),
+  key: ResourceKeySchema,
   name: z.string().min(1).max(100),
   color: z.number().int().min(0).max(0xffffff).optional(),
   hoist: z.boolean().optional(),
@@ -37,7 +39,7 @@ const RoleBlueprintSchema = z.object({
 });
 
 const CategoryBlueprintSchema = z.object({
-  key: z.string().min(1).max(100),
+  key: ResourceKeySchema,
   name: z.string().min(1).max(100),
   position: z.number().int().min(0).optional(),
   overwrites: z.array(PermissionOverwriteSchema).optional()
@@ -53,10 +55,10 @@ export const BlueprintChannelTypeSchema = z.enum([
 ]);
 
 const ChannelBlueprintSchema = z.object({
-  key: z.string().min(1).max(100),
+  key: ResourceKeySchema,
   name: z.string().min(1).max(100),
   type: BlueprintChannelTypeSchema,
-  categoryKey: z.string().optional(),
+  categoryKey: ResourceKeySchema.optional(),
   topic: z.string().max(4096).optional(),
   position: z.number().int().min(0).optional(),
   nsfw: z.boolean().optional(),
@@ -78,9 +80,9 @@ const GuildBlueprintSchema = z.object({
   verificationLevel: z.number().int().min(0).max(4).optional(),
   defaultMessageNotifications: z.number().int().min(0).max(1).optional(),
   explicitContentFilter: z.number().int().min(0).max(2).optional(),
-  rulesChannelKey: z.string().optional(),
-  publicUpdatesChannelKey: z.string().optional(),
-  safetyAlertsChannelKey: z.string().optional()
+  rulesChannelKey: ResourceKeySchema.optional(),
+  publicUpdatesChannelKey: ResourceKeySchema.optional(),
+  safetyAlertsChannelKey: ResourceKeySchema.optional()
 });
 
 export const ServerBlueprintSchema = z.object({
@@ -343,6 +345,7 @@ export async function applyBlueprint(args: {
   guildId: string;
   blueprintInput: unknown;
   dryRun: boolean;
+  confirm?: string;
   reason?: string;
 }) {
   const { client, store, guildId, dryRun, reason } = args;
@@ -352,8 +355,21 @@ export async function applyBlueprint(args: {
   const { blueprint, actions } = planBlueprint(args.blueprintInput, snapshot, guildState);
   client.policy.assertBulkSize(actions.length);
 
-  if (dryRun) return { dryRun: true, actionCount: actions.length, actions };
-  client.policy.assertWrite({ operation: "apply blueprint" });
+  const privileged = blueprint.roles.some((role) => role.permissions !== undefined)
+    || blueprint.categories.some((category) => category.overwrites !== undefined)
+    || blueprint.channels.some((channel) => channel.overwrites !== undefined)
+    || blueprint.guild !== undefined;
+  const expectedConfirmation = privileged
+    ? `APPLY PRIVILEGED BLUEPRINT ${guildId} ${changeDigest(blueprint)}`
+    : undefined;
+
+  if (dryRun) return { dryRun: true, actionCount: actions.length, actions, expectedConfirmation };
+  client.policy.assertWrite({
+    operation: "apply blueprint",
+    risk: privileged ? "privileged" : "ordinary",
+    confirmation: args.confirm,
+    expectedConfirmation
+  });
 
   for (const role of blueprint.roles) {
     const existing = byTrackedOrName(snapshot.roles, guildState.roles[role.key], role.name);

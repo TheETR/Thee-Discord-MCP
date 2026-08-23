@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { changeDigest } from "./confirmation.js";
 import type { DiscordClient } from "./discord.js";
 import { permissionBits } from "./permissions.js";
 import { jsonResult } from "./results.js";
@@ -18,6 +19,7 @@ interface WriteRequest {
   body?: unknown;
   reason?: string;
   destructive?: boolean;
+  risk?: "ordinary" | "privileged" | "destructive";
   confirm?: string;
   expectedConfirmation?: string;
   auth?: boolean;
@@ -36,6 +38,7 @@ async function runWrite(client: DiscordClient, input: WriteRequest) {
   client.policy.assertWrite({
     operation: input.operation,
     destructive: input.destructive,
+    risk: input.risk,
     confirmation: input.confirm,
     expectedConfirmation: input.expectedConfirmation
   });
@@ -107,7 +110,10 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         schemaDeclaredOperations: 166,
         grouping: "Related operations share an action-based MCP tool instead of becoming separate tools."
       },
-      safety: ["guild allowlist", "read-only/safe-write/full modes", "dry-run by default", "exact destructive confirmations", "bulk limits", "audit reasons"],
+      safety: ["guild allowlist", "ordinary/privileged/destructive write risk levels", "read-only/safe-write/full modes", "dry-run by default", "payload-bound privileged and destructive confirmations", "bulk limits", "audit reasons"],
+      platformLimits: {
+        serverProfileTraits: "Discord exposes this setting only to signed-in users. Bot tokens receive 'Bots cannot use this endpoint', so this server does not attempt unsupported user-token automation."
+      },
       families: {
         directory: ["list_channels", "find_channels", "list_roles", "search_members", "list_bans", "get_ban"],
         messages: ["get", "send", "edit", "delete", "crosspost", "list_pins", "pin", "unpin", "bulk_delete"],
@@ -516,7 +522,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_permission_overwrite",
     {
-      description: "List, upsert, or delete a channel permission overwrite using named Discord permissions.",
+      description: "List, upsert, or delete a channel permission overwrite using named permissions. Upserts require full mode and a payload-bound dry-run confirmation; deletes retain destructive gating.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["list", "upsert", "delete"]),
@@ -539,13 +545,18 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       const selectedTarget = required(targetId, "targetId");
       const route = `/channels/${channelId}/permissions/${selectedTarget}`;
       if (action === "upsert") {
+        const body = { type: required(targetType, "targetType") === "role" ? 0 : 1, allow: permissionBits(allow), deny: permissionBits(deny) };
+        const expected = `UPSERT CHANNEL PERMISSION ${channelId}/${selectedTarget} ${changeDigest(body)}`;
         return runWrite(client, {
           method: "PUT",
           route,
           operation: "upsert permission overwrite",
-          body: { type: required(targetType, "targetType") === "role" ? 0 : 1, allow: permissionBits(allow), deny: permissionBits(deny) },
+          body,
           reason,
-          dryRun
+          dryRun,
+          risk: "privileged",
+          confirm,
+          expectedConfirmation: expected
         });
       }
       const expected = `DELETE CHANNEL PERMISSION ${channelId}/${selectedTarget}`;

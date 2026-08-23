@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { registerAdvancedTools } from "./advanced-tools.js";
 import { applyBlueprint, fetchBlueprintSnapshot, planBlueprint, ServerBlueprintSchema } from "./blueprint.js";
+import { changeDigest } from "./confirmation.js";
 import type { AppConfig } from "./config.js";
 import { redactConfig } from "./config.js";
 import { registerCoverageTools } from "./coverage-tools.js";
@@ -139,21 +140,24 @@ export function registerTools(args: {
   server.registerTool(
     "discord_upsert_channel",
     {
-      description: "Create or modify any guild channel, category, forum, media, stage, voice, or announcement channel using Discord API fields.",
+      description: "Create or modify any guild channel type. Bodies containing permission_overwrites are privileged and require full mode plus the dry-run confirmation.",
       inputSchema: {
         guildId: Snowflake,
         channelId: Snowflake.optional(),
         body: JsonObject,
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, channelId, body, reason, dryRun }) => {
+    async ({ guildId, channelId, body, reason, confirm, dryRun }) => {
       client.policy.assertGuild(guildId);
       if (channelId) await client.assertChannelGuild(channelId, guildId);
       const plan = { operation: channelId ? "modify channel" : "create channel", guildId, channelId, body, reason };
-      if (dryRun) return jsonResult({ dryRun: true, plan });
-      client.policy.assertWrite({ operation: plan.operation });
+      const privileged = Object.hasOwn(body, "permission_overwrites");
+      const expected = privileged ? `UPSERT CHANNEL ${guildId}/${channelId ?? "NEW"} ${changeDigest(body)}` : undefined;
+      if (dryRun) return jsonResult({ dryRun: true, plan, expectedConfirmation: expected });
+      client.policy.assertWrite({ operation: plan.operation, risk: privileged ? "privileged" : "ordinary", confirmation: confirm, expectedConfirmation: expected });
       const result = channelId
         ? await client.request("PATCH", `/channels/${channelId}`, { body, reason })
         : await client.request("POST", `/guilds/${guildId}/channels`, { body, reason });
@@ -188,7 +192,7 @@ export function registerTools(args: {
   server.registerTool(
     "discord_set_channel_permission",
     {
-      description: "Create or replace a role/member permission overwrite on a channel.",
+      description: "Create or replace a role/member permission overwrite. Requires full mode and the exact payload-bound confirmation returned by dry-run.",
       inputSchema: {
         guildId: Snowflake,
         channelId: Snowflake,
@@ -197,14 +201,16 @@ export function registerTools(args: {
         allow: z.array(z.string()).default([]),
         deny: z.array(z.string()).default([]),
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, channelId, targetId, targetType, allow, deny, reason, dryRun }) => {
+    async ({ guildId, channelId, targetId, targetType, allow, deny, reason, confirm, dryRun }) => {
       await client.assertChannelGuild(channelId, guildId);
       const body = { type: targetType === "role" ? 0 : 1, allow: permissionBits(allow), deny: permissionBits(deny) };
-      if (dryRun) return jsonResult({ dryRun: true, channelId, targetId, body });
-      client.policy.assertWrite({ operation: "set channel permission overwrite" });
+      const expected = `SET CHANNEL PERMISSION ${channelId}/${targetId} ${changeDigest(body)}`;
+      if (dryRun) return jsonResult({ dryRun: true, channelId, targetId, body, expectedConfirmation: expected });
+      client.policy.assertWrite({ operation: "set channel permission overwrite", risk: "privileged", confirmation: confirm, expectedConfirmation: expected });
       await client.request("PUT", `/channels/${channelId}/permissions/${targetId}`, { body, reason });
       return jsonResult({ ok: true });
     }
@@ -234,20 +240,23 @@ export function registerTools(args: {
   server.registerTool(
     "discord_upsert_role",
     {
-      description: "Create or modify a guild role. Role hierarchy still limits what the bot can manage.",
+      description: "Create or modify a guild role. Changing permissions is privileged and requires full mode plus the dry-run confirmation; role hierarchy still applies.",
       inputSchema: {
         guildId: Snowflake,
         roleId: Snowflake.optional(),
         body: JsonObject,
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, roleId, body, reason, dryRun }) => {
+    async ({ guildId, roleId, body, reason, confirm, dryRun }) => {
       client.policy.assertGuild(guildId);
       const operation = roleId ? "modify role" : "create role";
-      if (dryRun) return jsonResult({ dryRun: true, operation, roleId, body });
-      client.policy.assertWrite({ operation });
+      const privileged = Object.hasOwn(body, "permissions");
+      const expected = privileged ? `UPSERT ROLE ${guildId}/${roleId ?? "NEW"} ${changeDigest(body)}` : undefined;
+      if (dryRun) return jsonResult({ dryRun: true, operation, roleId, body, expectedConfirmation: expected });
+      client.policy.assertWrite({ operation, risk: privileged ? "privileged" : "ordinary", confirmation: confirm, expectedConfirmation: expected });
       const route = roleId ? `/guilds/${guildId}/roles/${roleId}` : `/guilds/${guildId}/roles`;
       return jsonResult(await client.request(roleId ? "PATCH" : "POST", route, { body, reason }));
     }
@@ -460,18 +469,20 @@ export function registerTools(args: {
   server.registerTool(
     "discord_modify_guild",
     {
-      description: "Modify guild-level settings such as name, description, locale, verification, rules channel, and safety channels.",
+      description: "Modify guild-level settings. This is privileged and requires full mode plus the exact payload-bound confirmation returned by dry-run.",
       inputSchema: {
         guildId: Snowflake,
         body: JsonObject,
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, body, reason, dryRun }) => {
+    async ({ guildId, body, reason, confirm, dryRun }) => {
       client.policy.assertGuild(guildId);
-      if (dryRun) return jsonResult({ dryRun: true, body });
-      client.policy.assertWrite({ operation: "modify guild" });
+      const expected = `MODIFY GUILD ${guildId} ${changeDigest(body)}`;
+      if (dryRun) return jsonResult({ dryRun: true, body, expectedConfirmation: expected });
+      client.policy.assertWrite({ operation: "modify guild", risk: "privileged", confirmation: confirm, expectedConfirmation: expected });
       return jsonResult(await client.request("PATCH", `/guilds/${guildId}`, { body, reason }));
     }
   );
@@ -616,20 +627,22 @@ export function registerTools(args: {
   server.registerTool(
     "discord_apply_blueprint",
     {
-      description: "Idempotently create/update roles, categories, channels, forum tags, permissions, messages, pins, and guild settings from one blueprint. It never deletes unmanaged resources.",
+      description: "Idempotently create/update resources from one blueprint without deleting unmanaged resources. Guild settings, role permissions, or overwrites make the plan privileged and require full mode plus dry-run confirmation.",
       inputSchema: {
         guildId: Snowflake,
         blueprint: ServerBlueprintSchema,
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, blueprint, reason, dryRun }) => jsonResult(await applyBlueprint({
+    async ({ guildId, blueprint, reason, confirm, dryRun }) => jsonResult(await applyBlueprint({
       client,
       store,
       guildId,
       blueprintInput: blueprint,
       dryRun,
+      ...(confirm === undefined ? {} : { confirm }),
       ...(reason === undefined ? {} : { reason })
     }))
   );
@@ -649,11 +662,11 @@ export function registerTools(args: {
       }
     },
     async ({ guildId, method, route, body, reason, confirm, dryRun }) => {
-      await client.assertScopedRoute(guildId, route, method, body);
+      const canonicalRoute = await client.assertScopedRoute(guildId, route, method, body);
       const isWrite = method !== "GET";
-      const expected = `RAW ${method} ${route}`;
+      const expected = `RAW ${method} ${canonicalRoute} ${changeDigest(body ?? null)}`;
       if (isWrite && dryRun) {
-        return jsonResult({ dryRun: true, method, route, body, expectedConfirmation: expected });
+        return jsonResult({ dryRun: true, method, route: canonicalRoute, body, expectedConfirmation: expected });
       }
       if (isWrite) {
         client.policy.assertWrite({
@@ -663,7 +676,7 @@ export function registerTools(args: {
           expectedConfirmation: expected
         });
       }
-      return jsonResult(await client.request(method, route, {
+      return jsonResult(await client.request(method, canonicalRoute, {
         ...(body === undefined ? {} : { body }),
         ...(reason === undefined ? {} : { reason })
       }));

@@ -9,6 +9,7 @@ export class PolicyError extends Error {
 
 export interface WriteCheck {
   operation: string;
+  risk?: "ordinary" | "privileged" | "destructive";
   destructive?: boolean;
   confirmation?: string;
   expectedConfirmation?: string;
@@ -34,13 +35,14 @@ export class SafetyPolicy {
       throw new PolicyError(`${check.operation} is blocked because DISCORD_MODE=read-only.`);
     }
 
-    if (!check.destructive) return;
+    const risk = check.risk ?? (check.destructive ? "destructive" : "ordinary");
+    if (risk === "ordinary") return;
 
     if (this.config.mode !== "full") {
-      throw new PolicyError(`${check.operation} is destructive and requires DISCORD_MODE=full.`);
+      throw new PolicyError(`${check.operation} is ${risk} and requires DISCORD_MODE=full.`);
     }
 
-    if (!this.config.destructiveEnabled) {
+    if (risk === "destructive" && !this.config.destructiveEnabled) {
       throw new PolicyError(`${check.operation} is blocked because DISCORD_ENABLE_DESTRUCTIVE is not true.`);
     }
 

@@ -1,6 +1,8 @@
-# TheeDiscordMCP
+# Thee Discord MCP
 
-A local MCP server for inspecting and managing an allowlisted Discord server through Discord's official REST API. It covers day-to-day administration, dry-run planning, local resource tracking, audit reasons, and explicit safeguards around high-impact actions.
+[![CI](https://github.com/TheETR/Thee-Discord-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/TheETR/Thee-Discord-MCP/actions/workflows/ci.yml)
+
+A safety-gated Discord administration MCP server built on Discord's official REST API. It combines broad guild management, dry-run planning, local resource tracking, audit reasons, and explicit safeguards around high-impact actions without turning every related operation into a separate tool.
 
 ## What it manages
 
@@ -28,7 +30,7 @@ A local MCP server for inspecting and managing an allowlisted Discord server thr
 
 There are **49 MCP tools exposing 166 schema-declared operations**. The operation count treats every top-level `action` choice as one operation and every single-purpose tool as one operation. Related work stays together: for example, one `discord_guild_operations` tool contains preview, role-count, prune, integration, vanity URL, bulk-ban, voice-region, and incident actions instead of publishing eleven separate executables. The smoke test calculates and locks both inventory totals so documentation drift fails validation.
 
-Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messages have a separate `DISCORD_ALLOWED_USER_IDS` boundary, are empty by default, and verify the one-to-one DM recipient before every read or write. The raw escape hatch remains guild-scoped; it accepts routes under an allowed guild and verified guild-owned resources without becoming a general Discord request proxy.
+Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messages have a separate `DISCORD_ALLOWED_USER_IDS` boundary, are empty by default, and verify the one-to-one DM recipient before every read or write. The raw escape hatch remains guild-scoped; it canonicalizes paths before authorization, verifies indirect guild/channel IDs in request bodies, and never becomes a general Discord request proxy.
 
 `discord_capabilities` reports the inventory totals, grouping rule, safety model, and named operation families without contacting Discord. Empty `204 No Content` responses are normalized to `{ "ok": true }`; webhook credentials and uploaded data URIs are redacted from previews and tool results.
 
@@ -47,13 +49,13 @@ Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messag
 
 ## Safety modes
 
-| Mode | Reads | Create/update | Delete, ban, kick, raw writes |
-|---|---:|---:|---:|
-| `read-only` | yes | no | no |
-| `safe-write` | yes | yes | no |
-| `full` | yes | yes | only with destructive opt-in and exact confirmation |
+| Mode | Reads | Ordinary create/update | Privileged writes | Destructive writes |
+|---|---:|---:|---:|---:|
+| `read-only` | yes | no | no | no |
+| `safe-write` | yes | yes | no | no |
+| `full` | yes | yes | exact confirmation | destructive opt-in and exact confirmation |
 
-The default is `read-only`. Blueprint application never deletes resources. It creates or updates matching resources and tracks their Discord IDs in `.data/state.json` so reruns do not create duplicates.
+The default is `read-only`. Permission overwrites, role permission changes, guild security settings, and blueprints containing those fields are privileged writes: they require `full` mode and a payload-bound confirmation, but not the separate destructive opt-in. Blueprint application never deletes resources. It creates or updates matching resources and tracks their Discord IDs in `.data/state.json` so reruns do not create duplicates.
 
 ## 1. Create the Discord operator
 
@@ -79,7 +81,8 @@ Indexed guild-message search additionally requires the privileged **Message Cont
 Requires Node.js 20.19 or newer and pnpm.
 
 ```powershell
-cd TheeDiscordMCP
+git clone https://github.com/TheETR/Thee-Discord-MCP.git
+cd Thee-Discord-MCP
 pnpm install
 Copy-Item .env.example .env
 ```
@@ -110,8 +113,8 @@ Add the server to your MCP client configuration. An editable example is included
 ```toml
 [mcp_servers.thee-discord]
 command = "node"
-args = ["C:/path/to/TheeDiscordMCP/dist/index.js"]
-cwd = "C:/path/to/TheeDiscordMCP"
+args = ["C:/path/to/Thee-Discord-MCP/dist/index.js"]
+cwd = "C:/path/to/Thee-Discord-MCP"
 startup_timeout_sec = 20
 tool_timeout_sec = 120
 ```
@@ -152,7 +155,13 @@ DISCORD_ENABLE_DESTRUCTIVE=true
 
 Each destructive tool returns or documents the exact confirmation text it expects, such as `DELETE CHANNEL <id>`. High-fan-out operations such as bulk bans and pruning include a digest derived from the exact target set, so a confirmation cannot be reused for a different batch. Irreversible announcement crossposts and linked-role metadata replacement use the same full-mode gate. Return to `safe-write` or `read-only` afterward.
 
-The raw REST tool treats every non-GET request as destructive. This keeps an unfamiliar endpoint from bypassing the named safety gates.
+The raw REST tool treats every non-GET request as destructive. Its confirmation includes a SHA-256-derived digest of the exact request body, so a confirmation for one payload cannot authorize another. Absolute URLs, fragments, control characters, encoded path separators, dot segments, duplicate slashes, cross-guild body references, and unverified channel references are rejected before the request is sent.
+
+## Discord platform boundaries
+
+The server uses a bot token only. It does not automate user-only endpoints, self-bots, account sessions, or unsupported client APIs. For example, Discord's Server Profile **Traits** field is visible in the desktop client but its profile endpoint rejects bot tokens with `Bots cannot use this endpoint`; that field must currently be changed by a signed-in server administrator in Discord.
+
+See [Discord API Coverage](docs/API_COVERAGE.md) for named surfaces and deliberate omissions, [Security Review and Roadmap](docs/SECURITY_REVIEW.md) for threat boundaries and remaining hardening work, and [ELALEM Server Handoff](docs/ELALEM.md) for the live server layout and runtime boundaries.
 
 ## Development
 
