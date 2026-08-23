@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 export interface GuildState {
   roles: Record<string, string>;
@@ -53,7 +53,10 @@ function parseStateFile(value: unknown): StateFile {
 export class StateStore {
   private data: StateFile = { version: 1, guilds: {} };
 
-  constructor(private readonly path: string) {}
+  constructor(
+    private readonly path: string,
+    private readonly root: string = dirname(path)
+  ) {}
 
   async load(): Promise<void> {
     try {
@@ -71,19 +74,74 @@ export class StateStore {
   }
 
   async save(): Promise<void> {
+    await this.assertExistingParentChainSafe();
     await mkdir(dirname(this.path), { recursive: true });
+    await this.assertParentDirectorySafe();
+    await this.assertTargetIsNotLink();
+    const temporaryPath = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporaryPath, `${JSON.stringify(this.data, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
+      await this.assertParentDirectorySafe();
+      await this.assertTargetIsNotLink();
+      await rename(temporaryPath, this.path);
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+  }
+
+  private relativeParent(): { root: string; parent: string; relativePath: string } {
+    const root = resolve(this.root);
+    const parent = dirname(resolve(this.path));
+    const relativePath = relative(root, parent);
+    if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
+      throw new Error("State file parent must remain inside the configured package root.");
+    }
+    return { root, parent, relativePath };
+  }
+
+  private async assertExistingParentChainSafe(): Promise<void> {
+    const { root, relativePath } = this.relativeParent();
+    let current = root;
+    for (const segment of relativePath.split(/[\\/]/).filter(Boolean)) {
+      current = resolve(current, segment);
+      try {
+        const metadata = await lstat(current);
+        if (metadata.isSymbolicLink()) {
+          throw new Error("Refusing to save state through a symbolic-link or junction parent.");
+        }
+        if (!metadata.isDirectory()) throw new Error("State file parent contains a non-directory component.");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+    }
+  }
+
+  private async assertParentDirectorySafe(): Promise<void> {
+    const { root, parent, relativePath } = this.relativeParent();
+    let current = root;
+    for (const segment of relativePath.split(/[\\/]/).filter(Boolean)) {
+      current = resolve(current, segment);
+      const metadata = await lstat(current);
+      if (metadata.isSymbolicLink()) {
+        throw new Error("Refusing to save state through a symbolic-link or junction parent.");
+      }
+      if (!metadata.isDirectory()) throw new Error("State file parent contains a non-directory component.");
+    }
+
+    const [realRoot, realParent] = await Promise.all([realpath(root), realpath(parent)]);
+    const realRelative = relative(realRoot, realParent);
+    if (realRelative.startsWith("..") || isAbsolute(realRelative)) {
+      throw new Error("State file parent resolves outside the configured package root.");
+    }
+  }
+
+  private async assertTargetIsNotLink(): Promise<void> {
     try {
       const metadata = await lstat(this.path);
       if (metadata.isSymbolicLink()) throw new Error("Refusing to replace state through a symbolic link.");
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    const temporaryPath = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temporaryPath, `${JSON.stringify(this.data, null, 2)}\n`, { encoding: "utf8", flag: "wx", mode: 0o600 });
-      await rename(temporaryPath, this.path);
-    } finally {
-      await rm(temporaryPath, { force: true });
     }
   }
 }

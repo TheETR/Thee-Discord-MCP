@@ -32,7 +32,7 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 - Privileged and destructive confirmations are nonce-bearing, held only in memory, expire after a bounded configurable lifetime, are consumed before the downstream request, and do not survive restart.
 - Webhook tokens, URLs, and uploaded data URIs are redacted from previews and results.
 - Snapshot exports apply the same recursive webhook credential redaction as named webhook tools, including optional-request envelopes.
-- Blueprint state paths stay inside the package directory. Loaded state is schema-validated, direct symlinks are rejected, and saves use a unique atomic replacement file.
+- Blueprint state paths stay inside the package directory. Loaded state is schema-validated, direct symlinks are rejected, parent directories are revalidated against symlink/junction escape before write and replace, and saves use a unique atomic replacement file.
 - Write tools default to dry-run and attach audit reasons where Discord supports them.
 
 ## Residual work
@@ -40,7 +40,6 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 ### P1
 
 - Add a blueprint execution journal with preconditions, per-action results, restart recovery, and a final applied-plan digest. Discord does not offer multi-resource transactions, so partial failure must be explicit and recoverable.
-- Revalidate state-file parent directories against symlink or junction replacement immediately before saving.
 
 ### P2
 

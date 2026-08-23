@@ -15,15 +15,15 @@ function findProjectRoot(start: string): string {
   throw new Error("Could not locate TheeDiscordMCP package root.");
 }
 
-const projectRoot = findProjectRoot(dirname(fileURLToPath(import.meta.url)));
-dotenv.config({ path: resolve(projectRoot, ".env"), quiet: true });
+export const packageRoot = findProjectRoot(dirname(fileURLToPath(import.meta.url)));
+dotenv.config({ path: resolve(packageRoot, ".env"), quiet: true });
 
 export const ModeSchema = z.enum(["read-only", "safe-write", "full"]);
 export type Mode = z.infer<typeof ModeSchema>;
 
 export function resolveStateFile(path: string): string {
-  const resolved = resolve(projectRoot, path);
-  const projectRelative = relative(projectRoot, resolved);
+  const resolved = resolve(packageRoot, path);
+  const projectRelative = relative(packageRoot, resolved);
   if (projectRelative === "" || projectRelative.startsWith("..") || isAbsolute(projectRelative)) {
     throw new Error("DISCORD_STATE_FILE must resolve to a file inside the package directory.");
   }

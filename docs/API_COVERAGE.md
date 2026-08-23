@@ -40,7 +40,7 @@ Thee Discord MCP groups related Discord REST operations into named tools. The cu
 - Indexed message search requires the privileged Message Content intent. Discord returns `Missing Access` when it is disabled.
 - Creating a guild from a template is omitted because it escapes the configured guild boundary.
 - User-account OAuth surfaces, social relationships, and user tokens are not supported. The server operates with a bot token only.
-- The local blueprint state file is confined to the package directory, schema-validated on load, rejected when symlinked, and replaced atomically.
+- The local blueprint state file is confined to the package directory, schema-validated on load, rejected when directly symlinked, protected against symlink/junction parent escape during save, and replaced atomically.
 - Discord hierarchy, privileged intents, rate limits, and feature availability still apply.
 
 ## Verification
