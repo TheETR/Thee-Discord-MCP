@@ -50,7 +50,8 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 
 ### P3
 
-- Publish signed release artifacts with provenance, checksums, an SBOM, and automated dependency review.
+- Enable GitHub's Dependency Graph in repository Security settings, then restore the Dependency Review pull-request gate. The action is not supported while the graph is disabled.
+- Add registry provenance/signing if an npm package is published. The tag workflow already produces a GitHub release, package checksum, and CycloneDX SBOM.
 - Add a documented remote transport only after per-client authentication, authorization, rate limiting, secret storage, and deployment threat modeling exist.
 - Maintain a reproducible capability benchmark that scores breadth, safety gates, schema clarity, dry-run quality, and recovery behavior rather than comparing tool counts alone.
 

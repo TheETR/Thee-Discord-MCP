@@ -11,7 +11,7 @@ This project follows Semantic Versioning. Public release notes describe external
 - Handshake-generated capability inventory with schema sizes, SHA-256 schema digests, annotations, and CI drift detection.
 - Configurable bounded Discord request timeout and retry policy.
 - Blueprint execution journals, restart-aware recovery, and deterministic message nonces.
-- CodeQL, dependency review, Dependabot, and tag-driven GitHub release evidence with checksums and a CycloneDX SBOM.
+- CodeQL, Dependabot configuration, and tag-driven GitHub release evidence with checksums and a CycloneDX SBOM.
 
 ### Security
 
