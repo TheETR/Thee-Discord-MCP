@@ -15,6 +15,7 @@ function client() {
     allowedUserIds: new Set([]),
     mode: "read-only",
     destructiveEnabled: false,
+    confirmationTtlSeconds: 300,
     maxBulkActions: 100,
     stateFile: ".data/test-state.json",
     auditReasonPrefix: "test"
@@ -71,6 +72,7 @@ describe("raw Discord route scoping", () => {
       allowedUserIds: new Set([dmUserId]),
       mode: "read-only",
       destructiveEnabled: false,
+      confirmationTtlSeconds: 300,
       maxBulkActions: 100,
       stateFile: ".data/test-state.json",
       auditReasonPrefix: "test"

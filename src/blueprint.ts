@@ -363,7 +363,16 @@ export async function applyBlueprint(args: {
     ? `APPLY PRIVILEGED BLUEPRINT ${guildId} ${changeDigest(blueprint)}`
     : undefined;
 
-  if (dryRun) return { dryRun: true, actionCount: actions.length, actions, expectedConfirmation };
+  if (dryRun) {
+    return {
+      dryRun: true,
+      actionCount: actions.length,
+      actions,
+      expectedConfirmation: expectedConfirmation === undefined
+        ? undefined
+        : client.policy.issueConfirmation(expectedConfirmation)
+    };
+  }
   client.policy.assertWrite({
     operation: "apply blueprint",
     risk: privileged ? "privileged" : "ordinary",

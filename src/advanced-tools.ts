@@ -27,14 +27,18 @@ interface WriteRequest {
 }
 
 async function runWrite(client: DiscordClient, input: WriteRequest) {
-  const preview = {
-    dryRun: true,
-    method: input.method,
-    route: input.displayRoute ?? input.route,
-    ...(input.body === undefined ? {} : { body: input.body }),
-    ...(input.expectedConfirmation === undefined ? {} : { expectedConfirmation: input.expectedConfirmation })
-  };
-  if (input.dryRun) return jsonResult(preview);
+  if (input.dryRun) {
+    const expectedConfirmation = input.expectedConfirmation === undefined
+      ? undefined
+      : client.policy.issueConfirmation(input.expectedConfirmation);
+    return jsonResult({
+      dryRun: true,
+      method: input.method,
+      route: input.displayRoute ?? input.route,
+      ...(input.body === undefined ? {} : { body: input.body }),
+      ...(expectedConfirmation === undefined ? {} : { expectedConfirmation })
+    });
+  }
   client.policy.assertWrite({
     operation: input.operation,
     destructive: input.destructive,
@@ -107,10 +111,10 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       transport: "stdio",
       inventory: {
         mcpTools: 49,
-        schemaDeclaredOperations: 166,
+        schemaDeclaredOperations: 167,
         grouping: "Related operations share an action-based MCP tool instead of becoming separate tools."
       },
-      safety: ["guild allowlist", "ordinary/privileged/destructive write risk levels", "read-only/safe-write/full modes", "dry-run by default", "payload-bound privileged and destructive confirmations", "bulk limits", "audit reasons"],
+      safety: ["guild allowlist", "ordinary/privileged/destructive write risk levels", "read-only/safe-write/full modes", "dry-run by default", "one-time expiring payload-bound confirmations", "bulk limits", "audit reasons"],
       platformLimits: {
         serverProfileTraits: "Discord exposes this setting only to signed-in users. Bot tokens receive 'Bots cannot use this endpoint', so this server does not attempt unsupported user-token automation."
       },
@@ -145,7 +149,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_membership_screening",
     {
-      description: "Read or replace the Membership Screening rules shown on Discord's Access page. Updates use Discord's unstable endpoint and require full mode plus exact confirmation.",
+      description: "Read or replace the Membership Screening rules shown on Discord's Access page. Updates use Discord's unstable endpoint and require full mode plus the one-time confirmation returned by dry-run.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["get", "update"]),
@@ -173,7 +177,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       if (Object.keys(body).length === 0) {
         throw new Error("update requires enabled, description, or rules.");
       }
-      const expected = `UPDATE SERVER RULES ${guildId}`;
+      const expected = `UPDATE SERVER RULES ${guildId} ${changeDigest(body)}`;
       return runWrite(client, {
         method: "PATCH",
         route,
@@ -261,7 +265,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       }
       if (action === "remove_user") {
         const selectedUser = required(userId, "userId");
-        const expected = `REMOVE REACTION ${selectedUser} ${channelId}/${messageId}`;
+        const expected = `REMOVE REACTION ${selectedUser} ${channelId}/${messageId} ${changeDigest({ emoji: selectedEmoji })}`;
         return runWrite(client, { method: "DELETE", route: `${route}/${selectedUser}`, operation: "remove user reaction", dryRun, destructive: true, confirm, expectedConfirmation: expected });
       }
       if (action === "clear_emoji") {
@@ -280,7 +284,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_webhook",
     {
-      description: "Manage guild-owned webhooks and execute one without returning its token or URL.",
+      description: "Manage guild-owned webhooks and execute one without returning its token or URL. Lifecycle changes are privileged; deletion retains destructive gating.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["list_channel", "list_guild", "get", "create", "modify", "delete", "execute"]),
@@ -301,13 +305,18 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         const selectedChannel = required(channelId, "channelId");
         await client.assertChannelGuild(selectedChannel, guildId);
         if (action === "list_channel") return jsonResult(redactWebhookSecrets(await client.request("GET", `/channels/${selectedChannel}/webhooks`)));
+        const createBody = { name: required(name, "name") };
+        const expected = `CREATE WEBHOOK ${selectedChannel} ${changeDigest(createBody)}`;
         const result = await runWrite(client, {
           method: "POST",
           route: `/channels/${selectedChannel}/webhooks`,
           operation: "create webhook",
-          body: { name: required(name, "name") },
+          body: createBody,
           reason,
-          dryRun
+          dryRun,
+          risk: "privileged",
+          confirm,
+          expectedConfirmation: expected
         });
         if (dryRun) return result;
         const parsed = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "{}") as unknown;
@@ -318,7 +327,19 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       if (action === "get") return jsonResult(redactWebhookSecrets(await client.request("GET", `/webhooks/${selectedWebhook}`)));
       if (action === "modify") {
         if (typeof body?.channel_id === "string") await client.assertChannelGuild(body.channel_id, guildId);
-        const result = await runWrite(client, { method: "PATCH", route: `/webhooks/${selectedWebhook}`, operation: "modify webhook", body: required(body, "body"), reason, dryRun });
+        const modifyBody = required(body, "body");
+        const expected = `MODIFY WEBHOOK ${selectedWebhook} ${changeDigest(modifyBody)}`;
+        const result = await runWrite(client, {
+          method: "PATCH",
+          route: `/webhooks/${selectedWebhook}`,
+          operation: "modify webhook",
+          body: modifyBody,
+          reason,
+          dryRun,
+          risk: "privileged",
+          confirm,
+          expectedConfirmation: expected
+        });
         if (dryRun) return result;
         const parsed = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "{}") as unknown;
         return jsonResult(redactWebhookSecrets(parsed));

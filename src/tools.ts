@@ -29,6 +29,11 @@ export function sanitizeSnapshotWebhooks(value: unknown): unknown {
   return redactWebhookSecrets(value);
 }
 
+export function bulkDeleteConfirmation(channelId: string, messageIds: string[]): string {
+  const body = { messages: messageIds };
+  return `BULK DELETE MESSAGES ${channelId} ${messageIds.length} MESSAGES ${changeDigest(body)}`;
+}
+
 export function registerTools(args: {
   server: McpServer;
   client: DiscordClient;
@@ -167,7 +172,13 @@ export function registerTools(args: {
       const plan = { operation: channelId ? "modify channel" : "create channel", guildId, channelId, body, reason };
       const privileged = Object.hasOwn(body, "permission_overwrites");
       const expected = privileged ? `UPSERT CHANNEL ${guildId}/${channelId ?? "NEW"} ${changeDigest(body)}` : undefined;
-      if (dryRun) return jsonResult({ dryRun: true, plan, expectedConfirmation: expected });
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          plan,
+          expectedConfirmation: expected === undefined ? undefined : client.policy.issueConfirmation(expected)
+        });
+      }
       client.policy.assertWrite({ operation: plan.operation, risk: privileged ? "privileged" : "ordinary", confirmation: confirm, expectedConfirmation: expected });
       const result = channelId
         ? await client.request("PATCH", `/channels/${channelId}`, { body, reason })
@@ -220,7 +231,15 @@ export function registerTools(args: {
       await client.assertChannelGuild(channelId, guildId);
       const body = { type: targetType === "role" ? 0 : 1, allow: permissionBits(allow), deny: permissionBits(deny) };
       const expected = `SET CHANNEL PERMISSION ${channelId}/${targetId} ${changeDigest(body)}`;
-      if (dryRun) return jsonResult({ dryRun: true, channelId, targetId, body, expectedConfirmation: expected });
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          channelId,
+          targetId,
+          body,
+          expectedConfirmation: client.policy.issueConfirmation(expected)
+        });
+      }
       client.policy.assertWrite({ operation: "set channel permission overwrite", risk: "privileged", confirmation: confirm, expectedConfirmation: expected });
       await client.request("PUT", `/channels/${channelId}/permissions/${targetId}`, { body, reason });
       return jsonResult({ ok: true });
@@ -242,7 +261,7 @@ export function registerTools(args: {
     async ({ guildId, channelId, confirm, reason, dryRun }) => {
       await client.assertChannelGuild(channelId, guildId);
       const expected = `DELETE CHANNEL ${channelId}`;
-      if (dryRun) return jsonResult({ dryRun: true, expectedConfirmation: expected });
+      if (dryRun) return jsonResult({ dryRun: true, expectedConfirmation: client.policy.issueConfirmation(expected) });
       client.policy.assertWrite({ operation: "delete channel", destructive: true, confirmation: confirm, expectedConfirmation: expected });
       return jsonResult(await client.request("DELETE", `/channels/${channelId}`, { reason }));
     }
@@ -266,7 +285,15 @@ export function registerTools(args: {
       const operation = roleId ? "modify role" : "create role";
       const privileged = Object.hasOwn(body, "permissions");
       const expected = privileged ? `UPSERT ROLE ${guildId}/${roleId ?? "NEW"} ${changeDigest(body)}` : undefined;
-      if (dryRun) return jsonResult({ dryRun: true, operation, roleId, body, expectedConfirmation: expected });
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          operation,
+          roleId,
+          body,
+          expectedConfirmation: expected === undefined ? undefined : client.policy.issueConfirmation(expected)
+        });
+      }
       client.policy.assertWrite({ operation, risk: privileged ? "privileged" : "ordinary", confirmation: confirm, expectedConfirmation: expected });
       const route = roleId ? `/guilds/${guildId}/roles/${roleId}` : `/guilds/${guildId}/roles`;
       return jsonResult(await client.request(roleId ? "PATCH" : "POST", route, { body, reason }));
@@ -307,7 +334,7 @@ export function registerTools(args: {
     async ({ guildId, roleId, confirm, reason, dryRun }) => {
       client.policy.assertGuild(guildId);
       const expected = `DELETE ROLE ${roleId}`;
-      if (dryRun) return jsonResult({ dryRun: true, expectedConfirmation: expected });
+      if (dryRun) return jsonResult({ dryRun: true, expectedConfirmation: client.policy.issueConfirmation(expected) });
       client.policy.assertWrite({ operation: "delete role", destructive: true, confirmation: confirm, expectedConfirmation: expected });
       await client.request("DELETE", `/guilds/${guildId}/roles/${roleId}`, { reason });
       return jsonResult({ ok: true });
@@ -317,22 +344,37 @@ export function registerTools(args: {
   server.registerTool(
     "discord_member_roles",
     {
-      description: "Add and remove multiple roles from a guild member.",
+      description: "Add and remove multiple roles from a guild member. Role assignment is privileged and requires the one-time confirmation returned by dry-run.",
       inputSchema: {
         guildId: Snowflake,
         userId: Snowflake,
         addRoleIds: z.array(Snowflake).default([]),
         removeRoleIds: z.array(Snowflake).default([]),
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, userId, addRoleIds, removeRoleIds, reason, dryRun }) => {
+    async ({ guildId, userId, addRoleIds, removeRoleIds, reason, confirm, dryRun }) => {
       client.policy.assertGuild(guildId);
       const actionCount = addRoleIds.length + removeRoleIds.length;
       client.policy.assertBulkSize(actionCount);
-      if (dryRun) return jsonResult({ dryRun: true, userId, addRoleIds, removeRoleIds });
-      client.policy.assertWrite({ operation: "modify member roles" });
+      const expected = `MODIFY MEMBER ROLES ${guildId}/${userId} ${changeDigest({ addRoleIds, removeRoleIds })}`;
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          userId,
+          addRoleIds,
+          removeRoleIds,
+          expectedConfirmation: client.policy.issueConfirmation(expected)
+        });
+      }
+      client.policy.assertWrite({
+        operation: "modify member roles",
+        risk: "privileged",
+        confirmation: confirm,
+        expectedConfirmation: expected
+      });
       for (const roleId of addRoleIds) {
         await client.request("PUT", `/guilds/${guildId}/members/${userId}/roles/${roleId}`, { reason });
       }
@@ -361,8 +403,17 @@ export function registerTools(args: {
     async ({ guildId, userId, action, body, deleteMessageSeconds, confirm, reason, dryRun }) => {
       client.policy.assertGuild(guildId);
       const destructive = action !== "modify";
-      const expected = `${action.toUpperCase()} MEMBER ${userId}`;
-      if (dryRun) return jsonResult({ dryRun: true, action, body, expectedConfirmation: destructive ? expected : undefined });
+      const expected = action === "ban"
+        ? `BAN MEMBER ${userId} ${changeDigest({ body, deleteMessageSeconds })}`
+        : `${action.toUpperCase()} MEMBER ${userId}`;
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          action,
+          body,
+          expectedConfirmation: destructive ? client.policy.issueConfirmation(expected) : undefined
+        });
+      }
       client.policy.assertWrite({ operation: `${action} member`, destructive, confirmation: confirm, expectedConfirmation: expected });
       if (action === "modify") {
         return jsonResult(await client.request("PATCH", `/guilds/${guildId}/members/${userId}`, { body, reason }));
@@ -381,12 +432,13 @@ export function registerTools(args: {
   server.registerTool(
     "discord_message",
     {
-      description: "Inspect, send, edit, delete, crosspost, list pins, pin, or unpin messages in an allowed guild channel.",
+      description: "Inspect, send, edit, delete, bulk delete, crosspost, list pins, pin, or unpin messages in an allowed guild channel.",
       inputSchema: {
         guildId: Snowflake,
         channelId: Snowflake,
-        action: z.enum(["get", "send", "edit", "delete", "crosspost", "list_pins", "pin", "unpin"]),
+        action: z.enum(["get", "send", "edit", "delete", "bulk_delete", "crosspost", "list_pins", "pin", "unpin"]),
         messageId: Snowflake.optional(),
+        messageIds: z.array(Snowflake).min(2).max(100).optional(),
         content: z.string().max(2000).optional(),
         body: JsonObject.optional(),
         limit: z.number().int().min(1).max(50).default(50),
@@ -396,13 +448,37 @@ export function registerTools(args: {
         dryRun: DryRun
       }
     },
-    async ({ guildId, channelId, action, messageId, content, body, limit, before, confirm, reason, dryRun }) => {
+    async ({ guildId, channelId, action, messageId, messageIds, content, body, limit, before, confirm, reason, dryRun }) => {
       await client.assertChannelGuild(channelId, guildId);
       const channelRoot = `/channels/${channelId}`;
       if (action === "list_pins") {
         const query = new URLSearchParams({ limit: String(limit) });
         if (before !== undefined) query.set("before", before);
         return jsonResult(await client.request("GET", `${channelRoot}/messages/pins?${query}`));
+      }
+      if (action === "bulk_delete") {
+        if (messageIds === undefined) throw new Error("bulk_delete requires messageIds.");
+        const selectedMessages = messageIds;
+        client.policy.assertBulkSize(selectedMessages.length);
+        const bulkBody = { messages: selectedMessages };
+        const expected = bulkDeleteConfirmation(channelId, selectedMessages);
+        if (dryRun) {
+          return jsonResult({
+            dryRun: true,
+            action,
+            channelId,
+            body: bulkBody,
+            expectedConfirmation: client.policy.issueConfirmation(expected)
+          });
+        }
+        client.policy.assertWrite({
+          operation: "bulk delete messages",
+          destructive: true,
+          confirmation: confirm,
+          expectedConfirmation: expected
+        });
+        await client.request("POST", `${channelRoot}/messages/bulk-delete`, { body: bulkBody, reason });
+        return jsonResult({ ok: true, action, messageCount: selectedMessages.length });
       }
       if (action !== "send" && messageId === undefined) throw new Error(`${action} requires messageId.`);
       const messageRoute = `${channelRoot}/messages/${messageId ?? ""}`;
@@ -417,7 +493,16 @@ export function registerTools(args: {
         : action === "crosspost"
           ? `CROSSPOST MESSAGE ${channelId}/${messageId}`
           : undefined;
-      if (dryRun) return jsonResult({ dryRun: true, action, channelId, messageId, body: payload, expectedConfirmation: expected });
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          action,
+          channelId,
+          messageId,
+          body: payload,
+          expectedConfirmation: expected === undefined ? undefined : client.policy.issueConfirmation(expected)
+        });
+      }
       client.policy.assertWrite({ operation: `${action} message`, destructive, confirmation: confirm, expectedConfirmation: expected });
       if (action === "send") return jsonResult(await client.request("POST", `${channelRoot}/messages`, { body: payload, reason }));
       if (action === "edit") return jsonResult(await client.request("PATCH", messageRoute, { body: payload, reason }));
@@ -432,23 +517,37 @@ export function registerTools(args: {
   server.registerTool(
     "discord_current_bot_profile",
     {
-      description: "Read or modify this operator bot's username, avatar, and banner. Image fields accept Discord data URIs.",
+      description: "Read or modify this operator bot's username, avatar, and banner. Modifications are privileged and require the one-time confirmation returned by dry-run.",
       inputSchema: {
         action: z.enum(["get", "modify"]),
         body: JsonObject.default({}),
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ action, body, reason, dryRun }) => {
+    async ({ action, body, reason, confirm, dryRun }) => {
       if (action === "get") return jsonResult(await client.request("GET", "/users/@me"));
       const safeBody = {
         ...body,
         avatar: body.avatar ? "<redacted image data>" : undefined,
         banner: body.banner ? "<redacted image data>" : undefined
       };
-      if (dryRun) return jsonResult({ dryRun: true, action, body: safeBody });
-      client.policy.assertWrite({ operation: "modify current bot profile" });
+      const expected = `MODIFY BOT PROFILE ${changeDigest(body)}`;
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          action,
+          body: safeBody,
+          expectedConfirmation: client.policy.issueConfirmation(expected)
+        });
+      }
+      client.policy.assertWrite({
+        operation: "modify current bot profile",
+        risk: "privileged",
+        confirmation: confirm,
+        expectedConfirmation: expected
+      });
       return jsonResult(await client.request("PATCH", "/users/@me", { body, reason }));
     }
   );
@@ -456,23 +555,37 @@ export function registerTools(args: {
   server.registerTool(
     "discord_current_application",
     {
-      description: "Read or modify the current Discord application profile and installation metadata.",
+      description: "Read or modify the current Discord application profile and installation metadata. Modifications are privileged and require the one-time confirmation returned by dry-run.",
       inputSchema: {
         action: z.enum(["get", "modify"]),
         body: JsonObject.default({}),
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ action, body, reason, dryRun }) => {
+    async ({ action, body, reason, confirm, dryRun }) => {
       if (action === "get") return jsonResult(await client.request("GET", "/oauth2/applications/@me"));
       const safeBody = {
         ...body,
         icon: body.icon ? "<redacted image data>" : undefined,
         cover_image: body.cover_image ? "<redacted image data>" : undefined
       };
-      if (dryRun) return jsonResult({ dryRun: true, action, body: safeBody });
-      client.policy.assertWrite({ operation: "modify current application" });
+      const expected = `MODIFY APPLICATION ${changeDigest(body)}`;
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          action,
+          body: safeBody,
+          expectedConfirmation: client.policy.issueConfirmation(expected)
+        });
+      }
+      client.policy.assertWrite({
+        operation: "modify current application",
+        risk: "privileged",
+        confirmation: confirm,
+        expectedConfirmation: expected
+      });
       return jsonResult(await client.request("PATCH", "/applications/@me", { body, reason }));
     }
   );
@@ -492,7 +605,7 @@ export function registerTools(args: {
     async ({ guildId, body, reason, confirm, dryRun }) => {
       client.policy.assertGuild(guildId);
       const expected = `MODIFY GUILD ${guildId} ${changeDigest(body)}`;
-      if (dryRun) return jsonResult({ dryRun: true, body, expectedConfirmation: expected });
+      if (dryRun) return jsonResult({ dryRun: true, body, expectedConfirmation: client.policy.issueConfirmation(expected) });
       client.policy.assertWrite({ operation: "modify guild", risk: "privileged", confirmation: confirm, expectedConfirmation: expected });
       return jsonResult(await client.request("PATCH", `/guilds/${guildId}`, { body, reason }));
     }
@@ -501,7 +614,7 @@ export function registerTools(args: {
   server.registerTool(
     "discord_automod",
     {
-      description: "List, create, modify, or delete Discord AutoMod rules.",
+      description: "List, create, modify, or delete Discord AutoMod rules. Create and modify are privileged; delete retains destructive gating.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["list", "create", "modify", "delete"]),
@@ -517,9 +630,24 @@ export function registerTools(args: {
       if (action === "list") return jsonResult(await client.request("GET", `/guilds/${guildId}/auto-moderation/rules`));
       if ((action === "modify" || action === "delete") && !ruleId) throw new Error(`${action} requires ruleId.`);
       const destructive = action === "delete";
-      const expected = ruleId ? `DELETE AUTOMOD ${ruleId}` : undefined;
-      if (dryRun) return jsonResult({ dryRun: true, action, ruleId, body, expectedConfirmation: expected });
-      client.policy.assertWrite({ operation: `${action} automod`, destructive, confirmation: confirm, expectedConfirmation: expected });
+      const expected = destructive
+        ? `DELETE AUTOMOD ${ruleId}`
+        : `UPSERT AUTOMOD ${guildId}/${ruleId ?? "NEW"} ${changeDigest(body)}`;
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          action,
+          ruleId,
+          body,
+          expectedConfirmation: client.policy.issueConfirmation(expected)
+        });
+      }
+      client.policy.assertWrite({
+        operation: `${action} automod`,
+        risk: destructive ? "destructive" : "privileged",
+        confirmation: confirm,
+        expectedConfirmation: expected
+      });
       const base = `/guilds/${guildId}/auto-moderation/rules`;
       if (action === "create") return jsonResult(await client.request("POST", base, { body, reason }));
       if (action === "modify") return jsonResult(await client.request("PATCH", `${base}/${ruleId}`, { body, reason }));
@@ -531,20 +659,27 @@ export function registerTools(args: {
   server.registerTool(
     "discord_onboarding",
     {
-      description: "Get or replace guild onboarding configuration. Discord enforces Community onboarding constraints.",
+      description: "Get or replace guild onboarding configuration. Replacement is privileged and requires the one-time confirmation returned by dry-run.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["get", "update"]),
         body: JsonObject.default({}),
         reason: z.string().max(400).optional(),
+        confirm: z.string().optional(),
         dryRun: DryRun
       }
     },
-    async ({ guildId, action, body, reason, dryRun }) => {
+    async ({ guildId, action, body, reason, confirm, dryRun }) => {
       client.policy.assertGuild(guildId);
       if (action === "get") return jsonResult(await client.request("GET", `/guilds/${guildId}/onboarding`));
-      if (dryRun) return jsonResult({ dryRun: true, body });
-      client.policy.assertWrite({ operation: "modify onboarding" });
+      const expected = `REPLACE ONBOARDING ${guildId} ${changeDigest(body)}`;
+      if (dryRun) return jsonResult({ dryRun: true, body, expectedConfirmation: client.policy.issueConfirmation(expected) });
+      client.policy.assertWrite({
+        operation: "modify onboarding",
+        risk: "privileged",
+        confirmation: confirm,
+        expectedConfirmation: expected
+      });
       return jsonResult(await client.request("PUT", `/guilds/${guildId}/onboarding`, { body, reason }));
     }
   );
@@ -590,7 +725,15 @@ export function registerTools(args: {
       if ((action === "modify" || action === "delete") && !emojiId) throw new Error(`${action} requires emojiId.`);
       const destructive = action === "delete";
       const expected = emojiId ? `DELETE EMOJI ${emojiId}` : undefined;
-      if (dryRun) return jsonResult({ dryRun: true, action, emojiId, body: { ...body, image: body.image ? "<redacted image data>" : undefined }, expectedConfirmation: expected });
+      if (dryRun) {
+        return jsonResult({
+          dryRun: true,
+          action,
+          emojiId,
+          body: { ...body, image: body.image ? "<redacted image data>" : undefined },
+          expectedConfirmation: expected === undefined ? undefined : client.policy.issueConfirmation(expected)
+        });
+      }
       client.policy.assertWrite({ operation: `${action} emoji`, destructive, confirmation: confirm, expectedConfirmation: expected });
       const base = `/guilds/${guildId}/emojis`;
       if (action === "create") return jsonResult(await client.request("POST", base, { body, reason }));
@@ -677,7 +820,13 @@ export function registerTools(args: {
       const isWrite = method !== "GET";
       const expected = `RAW ${method} ${canonicalRoute} ${changeDigest(body ?? null)}`;
       if (isWrite && dryRun) {
-        return jsonResult({ dryRun: true, method, route: canonicalRoute, body, expectedConfirmation: expected });
+        return jsonResult({
+          dryRun: true,
+          method,
+          route: canonicalRoute,
+          body,
+          expectedConfirmation: client.policy.issueConfirmation(expected)
+        });
       }
       if (isWrite) {
         client.policy.assertWrite({

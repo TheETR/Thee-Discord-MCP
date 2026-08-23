@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { AppConfig } from "./config.js";
 
 export class PolicyError extends Error {
@@ -15,8 +17,27 @@ export interface WriteCheck {
   expectedConfirmation?: string;
 }
 
+interface PendingConfirmation {
+  base: string;
+  expiresAt: number;
+}
+
+interface SafetyPolicyOptions {
+  now?: () => number;
+  nonce?: () => string;
+}
+
+const MAX_PENDING_CONFIRMATIONS = 1024;
+
 export class SafetyPolicy {
-  constructor(private readonly config: AppConfig) {}
+  private readonly pendingConfirmations = new Map<string, PendingConfirmation>();
+  private readonly now: () => number;
+  private readonly nonce: () => string;
+
+  constructor(private readonly config: AppConfig, options: SafetyPolicyOptions = {}) {
+    this.now = options.now ?? Date.now;
+    this.nonce = options.nonce ?? randomUUID;
+  }
 
   assertGuild(guildId: string): void {
     if (!this.config.allowedGuildIds.has(guildId)) {
@@ -28,6 +49,26 @@ export class SafetyPolicy {
     if (!this.config.allowedUserIds.has(userId)) {
       throw new PolicyError(`User ${userId} is not in DISCORD_ALLOWED_USER_IDS.`);
     }
+  }
+
+  issueConfirmation(base: string): string {
+    const now = this.now();
+    this.removeExpiredConfirmations(now);
+    while (this.pendingConfirmations.size >= MAX_PENDING_CONFIRMATIONS) {
+      const oldest = this.pendingConfirmations.keys().next().value as string | undefined;
+      if (oldest === undefined) break;
+      this.pendingConfirmations.delete(oldest);
+    }
+
+    const token = `${base} [nonce:${this.nonce()}]`;
+    if (this.pendingConfirmations.has(token)) {
+      throw new PolicyError("Could not issue a unique confirmation. Run the dry-run again.");
+    }
+    this.pendingConfirmations.set(token, {
+      base,
+      expiresAt: now + this.config.confirmationTtlSeconds * 1000
+    });
+    return token;
   }
 
   assertWrite(check: WriteCheck): void {
@@ -47,8 +88,27 @@ export class SafetyPolicy {
     }
 
     const expected = check.expectedConfirmation ?? `CONFIRM ${check.operation}`;
-    if (check.confirmation !== expected) {
-      throw new PolicyError(`Confirmation mismatch. Pass confirm exactly as: ${expected}`);
+    if (check.confirmation === undefined) {
+      throw new PolicyError("Confirmation required. Run the same operation with dryRun=true to obtain a one-time confirmation.");
+    }
+
+    const pending = this.pendingConfirmations.get(check.confirmation);
+    if (pending === undefined) {
+      throw new PolicyError("Confirmation is invalid or already used. Run the same operation with dryRun=true for a fresh confirmation.");
+    }
+
+    this.pendingConfirmations.delete(check.confirmation);
+    if (pending.expiresAt <= this.now()) {
+      throw new PolicyError("Confirmation expired. Run the same operation with dryRun=true for a fresh confirmation.");
+    }
+    if (pending.base !== expected) {
+      throw new PolicyError("Confirmation does not match this operation or payload. Run this exact operation with dryRun=true.");
+    }
+  }
+
+  private removeExpiredConfirmations(now: number): void {
+    for (const [token, confirmation] of this.pendingConfirmations) {
+      if (confirmation.expiresAt <= now) this.pendingConfirmations.delete(token);
     }
   }
 

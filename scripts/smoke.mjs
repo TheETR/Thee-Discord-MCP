@@ -59,8 +59,8 @@ try {
     const actionSchema = tool.inputSchema?.properties?.action;
     return total + (Array.isArray(actionSchema?.enum) ? actionSchema.enum.length : 1);
   }, 0);
-  if (declaredOperations !== 166) {
-    throw new Error(`Expected 166 schema-declared operations, received ${declaredOperations}.`);
+  if (declaredOperations !== 167) {
+    throw new Error(`Expected 167 schema-declared operations, received ${declaredOperations}.`);
   }
   console.log(`MCP handshake passed; ${tools.length} tools and ${declaredOperations} schema-declared operations discovered.`);
 } finally {

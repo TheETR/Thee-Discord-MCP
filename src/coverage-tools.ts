@@ -34,12 +34,15 @@ interface WriteRequest {
 
 async function runWrite(client: DiscordClient, input: WriteRequest) {
   if (input.dryRun) {
+    const expectedConfirmation = input.expectedConfirmation === undefined
+      ? undefined
+      : client.policy.issueConfirmation(input.expectedConfirmation);
     return jsonResult({
       dryRun: true,
       method: input.method,
       route: input.route,
       ...(input.body === undefined ? {} : { body: redactDataUris(input.body) }),
-      ...(input.expectedConfirmation === undefined ? {} : { expectedConfirmation: input.expectedConfirmation })
+      ...(expectedConfirmation === undefined ? {} : { expectedConfirmation })
     });
   }
   client.policy.assertWrite({
@@ -153,12 +156,13 @@ export function registerCoverageTools(args: { server: McpServer; client: Discord
       if (action === "list_integrations") return jsonResult(await client.request("GET", `${root}/integrations`));
       if (action === "get_vanity_url") return jsonResult(await client.request("GET", `${root}/vanity-url`));
       if (action === "begin_prune") {
-        const expected = `PRUNE GUILD ${guildId} ${days} DAYS ROLES ${confirmationDigest(includeRoleIds)}`;
+        const pruneBody = { days, compute_prune_count: computePruneCount, include_roles: includeRoleIds };
+        const expected = `PRUNE GUILD ${guildId} ${days} DAYS ${confirmationDigest(pruneBody)}`;
         return runWrite(client, {
           method: "POST",
           route: `${root}/prune`,
           operation: "begin guild prune",
-          body: { days, compute_prune_count: computePruneCount, include_roles: includeRoleIds },
+          body: pruneBody,
           reason,
           dryRun,
           destructive: true,
@@ -183,12 +187,13 @@ export function registerCoverageTools(args: { server: McpServer; client: Discord
       if (action === "bulk_ban") {
         const selectedUsers = required(userIds, "userIds");
         client.policy.assertBulkSize(selectedUsers.length);
-        const expected = `BULK BAN ${guildId} ${selectedUsers.length} USERS ${confirmationDigest(selectedUsers)}`;
+        const bulkBanBody = { user_ids: selectedUsers, delete_message_seconds: deleteMessageSeconds };
+        const expected = `BULK BAN ${guildId} ${selectedUsers.length} USERS ${confirmationDigest(bulkBanBody)}`;
         return runWrite(client, {
           method: "POST",
           route: `${root}/bulk-ban`,
           operation: "bulk ban members",
-          body: { user_ids: selectedUsers, delete_message_seconds: deleteMessageSeconds },
+          body: bulkBanBody,
           reason,
           dryRun,
           destructive: true,
@@ -199,15 +204,16 @@ export function registerCoverageTools(args: { server: McpServer; client: Discord
       if (invitesDisabledUntil === undefined && dmsDisabledUntil === undefined) {
         throw new Error("modify_incident_actions requires invitesDisabledUntil or dmsDisabledUntil.");
       }
-      const expected = `UPDATE INCIDENT ACTIONS ${guildId}`;
+      const incidentBody = {
+        ...(invitesDisabledUntil === undefined ? {} : { invites_disabled_until: invitesDisabledUntil }),
+        ...(dmsDisabledUntil === undefined ? {} : { dms_disabled_until: dmsDisabledUntil })
+      };
+      const expected = `UPDATE INCIDENT ACTIONS ${guildId} ${confirmationDigest(incidentBody)}`;
       return runWrite(client, {
         method: "PUT",
         route: `${root}/incident-actions`,
         operation: "modify guild incident actions",
-        body: {
-          ...(invitesDisabledUntil === undefined ? {} : { invites_disabled_until: invitesDisabledUntil }),
-          ...(dmsDisabledUntil === undefined ? {} : { dms_disabled_until: dmsDisabledUntil })
-        },
+        body: incidentBody,
         reason,
         dryRun,
         destructive: true,

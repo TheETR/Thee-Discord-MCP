@@ -2,6 +2,7 @@ import type { RawFile } from "@discordjs/rest";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { changeDigest } from "./confirmation.js";
 import type { DiscordClient } from "./discord.js";
 import { jsonResult } from "./results.js";
 
@@ -26,6 +27,9 @@ interface WriteInput {
 
 async function runWrite(client: DiscordClient, input: WriteInput) {
   if (input.dryRun) {
+    const expectedConfirmation = input.expectedConfirmation === undefined
+      ? undefined
+      : client.policy.issueConfirmation(input.expectedConfirmation);
     return jsonResult({
       dryRun: true,
       method: input.method,
@@ -34,7 +38,7 @@ async function runWrite(client: DiscordClient, input: WriteInput) {
       ...(input.files === undefined ? {} : {
         files: input.files.map((file) => ({ name: file.name, contentType: file.contentType, byteLength: byteLength(file.data) }))
       }),
-      ...(input.expectedConfirmation === undefined ? {} : { expectedConfirmation: input.expectedConfirmation })
+      ...(expectedConfirmation === undefined ? {} : { expectedConfirmation })
     });
   }
   client.policy.assertWrite({
@@ -508,8 +512,9 @@ export function registerExtraTools(args: { server: McpServer; client: DiscordCli
       if (action === "list") return jsonResult(await client.request("GET", `${root}?with_localizations=${withLocalizations}`));
       if (action === "upsert") return runWrite(client, { method: "POST", route: root, operation: `upsert ${scopeLabel} command`, body: required(body, "body"), dryRun });
       if (action === "bulk_overwrite") {
-        const expected = selectedGuild === undefined ? "OVERWRITE GLOBAL COMMANDS" : `OVERWRITE GUILD COMMANDS ${selectedGuild}`;
-        return runWrite(client, { method: "PUT", route: root, operation: `bulk overwrite ${scopeLabel} commands`, body: required(commands, "commands"), dryRun, destructive: true, confirm, expectedConfirmation: expected });
+        const selectedCommands = required(commands, "commands");
+        const expected = `${selectedGuild === undefined ? "OVERWRITE GLOBAL COMMANDS" : `OVERWRITE GUILD COMMANDS ${selectedGuild}`} ${changeDigest(selectedCommands)}`;
+        return runWrite(client, { method: "PUT", route: root, operation: `bulk overwrite ${scopeLabel} commands`, body: selectedCommands, dryRun, destructive: true, confirm, expectedConfirmation: expected });
       }
       const selectedCommand = required(commandId, "commandId");
       const route = `${root}/${selectedCommand}`;

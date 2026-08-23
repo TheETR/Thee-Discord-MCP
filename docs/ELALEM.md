@@ -61,7 +61,7 @@ Keep the About section short and written in first person. Keep it above the publ
 - Idempotent blueprint planning and application with dry-run previews
 - Allowlist-scoped raw REST access for newly released Discord endpoints
 
-All writes are protected by the configured safety mode. Destructive operations additionally require full mode, destructive opt-in, and an exact confirmation string.
+All writes are protected by the configured safety mode. Privileged and destructive operations require the one-time, expiring confirmation returned by the matching dry-run; destructive operations additionally require full mode and destructive opt-in.
 
 ## Remaining limitations
 

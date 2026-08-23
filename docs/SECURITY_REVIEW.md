@@ -26,7 +26,10 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 - Guild and channel identifiers nested in raw request bodies are revalidated.
 - Raw writes are destructive and bind confirmation to a stable digest of the exact body.
 - Ordinary, privileged, and destructive writes have separate gates. Permission overwrites, role permission changes, guild settings, and blueprints containing those fields require full mode and a payload-bound confirmation.
+- Role assignment, AutoMod changes, onboarding replacement, webhook creation/modification, and bot/application profile changes are privileged writes.
 - High-fan-out prune and bulk-ban confirmations bind to their target set and respect the configured action ceiling.
+- Every destructive request with a mutable body binds the confirmation to a stable digest of that complete body; message bulk deletion is additionally bound to the exact channel and target set.
+- Privileged and destructive confirmations are nonce-bearing, held only in memory, expire after a bounded configurable lifetime, are consumed before the downstream request, and do not survive restart.
 - Webhook tokens, URLs, and uploaded data URIs are redacted from previews and results.
 - Snapshot exports apply the same recursive webhook credential redaction as named webhook tools, including optional-request envelopes.
 - Blueprint state paths stay inside the package directory. Loaded state is schema-validated, direct symlinks are rejected, and saves use a unique atomic replacement file.
@@ -36,11 +39,8 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 
 ### P1
 
-- Add one-time confirmation nonces with expiry and consumption so an identical approved payload cannot be replayed later.
-- Extend privileged classification to every policy-sensitive update, including AutoMod disablement, onboarding replacement, webhook lifecycle changes, application profiles, and role assignment to members.
 - Add a blueprint execution journal with preconditions, per-action results, restart recovery, and a final applied-plan digest. Discord does not offer multi-resource transactions, so partial failure must be explicit and recoverable.
 - Revalidate state-file parent directories against symlink or junction replacement immediately before saving.
-- Bind named destructive confirmations consistently to all mutable parameters, not only the primary target.
 
 ### P2
 

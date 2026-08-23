@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeSnapshotWebhooks } from "../src/tools.js";
+import { bulkDeleteConfirmation, sanitizeSnapshotWebhooks } from "../src/tools.js";
 
 describe("snapshot webhook redaction", () => {
   it("redacts credentials nested inside optional-request envelopes", () => {
@@ -25,5 +25,26 @@ describe("snapshot webhook redaction", () => {
     });
     expect(JSON.stringify(result)).not.toContain("sensitive-token");
     expect(JSON.stringify(result)).not.toContain("another-secret");
+  });
+});
+
+describe("bulk message deletion confirmation", () => {
+  it("binds the confirmation to the exact channel and target set", () => {
+    const first = bulkDeleteConfirmation("123456789012345678", [
+      "234567890123456789",
+      "345678901234567890"
+    ]);
+    expect(first).toBe(bulkDeleteConfirmation("123456789012345678", [
+      "234567890123456789",
+      "345678901234567890"
+    ]));
+    expect(first).not.toBe(bulkDeleteConfirmation("123456789012345678", [
+      "234567890123456789",
+      "456789012345678901"
+    ]));
+    expect(first).not.toBe(bulkDeleteConfirmation("567890123456789012", [
+      "234567890123456789",
+      "345678901234567890"
+    ]));
   });
 });
