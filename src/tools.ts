@@ -1,7 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { registerAdvancedTools } from "./advanced-tools.js";
+import { redactWebhookSecrets, registerAdvancedTools } from "./advanced-tools.js";
 import { applyBlueprint, fetchBlueprintSnapshot, planBlueprint, ServerBlueprintSchema } from "./blueprint.js";
 import { changeDigest } from "./confirmation.js";
 import type { AppConfig } from "./config.js";
@@ -23,6 +23,10 @@ async function optionalRequest(client: DiscordClient, method: "GET", route: stri
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+export function sanitizeSnapshotWebhooks(value: unknown): unknown {
+  return redactWebhookSecrets(value);
 }
 
 export function registerTools(args: {
@@ -92,7 +96,14 @@ export function registerTools(args: {
       const members = includeMembers
         ? await optionalRequest(client, "GET", `/guilds/${guildId}/members?limit=${memberLimit}`)
         : { ok: false, error: "Member export not requested." };
-      return jsonResult({ ...snapshot, automod, onboarding, welcomeScreen, webhooks, members });
+      return jsonResult({
+        ...snapshot,
+        automod,
+        onboarding,
+        welcomeScreen,
+        webhooks: sanitizeSnapshotWebhooks(webhooks),
+        members
+      });
     }
   );
 

@@ -28,6 +28,7 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 - Ordinary, privileged, and destructive writes have separate gates. Permission overwrites, role permission changes, guild settings, and blueprints containing those fields require full mode and a payload-bound confirmation.
 - High-fan-out prune and bulk-ban confirmations bind to their target set and respect the configured action ceiling.
 - Webhook tokens, URLs, and uploaded data URIs are redacted from previews and results.
+- Snapshot exports apply the same recursive webhook credential redaction as named webhook tools, including optional-request envelopes.
 - Blueprint state paths stay inside the package directory. Loaded state is schema-validated, direct symlinks are rejected, and saves use a unique atomic replacement file.
 - Write tools default to dry-run and attach audit reasons where Discord supports them.
 
