@@ -418,7 +418,8 @@ export function registerExtraTools(args: { server: McpServer; client: DiscordCli
         sortBy: z.enum(["timestamp", "relevance"]).default("timestamp"),
         sortOrder: z.enum(["asc", "desc"]).default("desc"),
         includeNsfw: z.boolean().default(false)
-      }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId, content, channelIds, authorIds, mentions, roleIds, has, authorTypes, embedTypes, limit, offset, minId, maxId, sortBy, sortOrder, includeNsfw }) => {
       client.policy.assertGuild(guildId);

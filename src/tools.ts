@@ -10,6 +10,7 @@ import { registerCoverageTools } from "./coverage-tools.js";
 import type { DiscordClient } from "./discord.js";
 import { registerExtraTools } from "./extra-tools.js";
 import { knownPermissionNames, permissionBits } from "./permissions.js";
+import { evaluateReleaseReadiness } from "./readiness.js";
 import { jsonResult } from "./results.js";
 import type { StateStore } from "./state.js";
 
@@ -49,12 +50,37 @@ export function registerTools(args: {
   server.registerTool(
     "discord_health",
     {
-      description: "Validate the Discord bot token and show the MCP safety configuration without exposing secrets.",
-      inputSchema: {}
+      description: "Validate the active bot runtime or audit the authenticated application's public-release readiness without exposing secrets or owner data.",
+      inputSchema: {
+        action: z.enum(["runtime", "release_readiness"]).default("runtime"),
+        guildId: Snowflake.optional()
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
-    async () => {
+    async ({ action, guildId }) => {
       const bot = await client.request<Record<string, unknown>>("GET", "/users/@me");
-      return jsonResult({ bot, config: redactConfig(config) });
+      if (action === "runtime") return jsonResult({ bot, config: redactConfig(config) });
+      if (guildId === undefined) throw new Error("guildId is required for the release_readiness action.");
+      client.policy.assertGuild(guildId);
+      const applicationId = String(bot.id ?? "");
+      if (!/^\d{17,20}$/.test(applicationId)) throw new Error("Discord returned an invalid current bot ID.");
+      const [application, guild, member, roles, guildCommands, globalCommands] = await Promise.all([
+        client.request<Record<string, unknown>>("GET", "/oauth2/applications/@me"),
+        client.request<Record<string, unknown>>("GET", `/guilds/${guildId}`),
+        client.request<Record<string, unknown>>("GET", `/guilds/${guildId}/members/@me`),
+        client.request<Array<Record<string, unknown>>>("GET", `/guilds/${guildId}/roles`),
+        client.request<Array<Record<string, unknown>>>("GET", `/applications/${applicationId}/guilds/${guildId}/commands`),
+        client.request<Array<Record<string, unknown>>>("GET", `/applications/${applicationId}/commands`)
+      ]);
+      return jsonResult(evaluateReleaseReadiness({
+        bot,
+        application,
+        guild,
+        member,
+        roles,
+        guildCommands,
+        globalCommands
+      }));
     }
   );
 
@@ -62,7 +88,8 @@ export function registerTools(args: {
     "discord_known_permissions",
     {
       description: "List permission names accepted by blueprint and overwrite tools.",
-      inputSchema: {}
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
     async () => jsonResult({ permissions: knownPermissionNames() })
   );
@@ -71,7 +98,8 @@ export function registerTools(args: {
     "discord_get_guild",
     {
       description: "Read a guild and its approximate member/presence counts.",
-      inputSchema: { guildId: Snowflake }
+      inputSchema: { guildId: Snowflake },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId }) => {
       client.policy.assertGuild(guildId);
@@ -87,7 +115,8 @@ export function registerTools(args: {
         guildId: Snowflake,
         includeMembers: z.boolean().default(false),
         memberLimit: z.number().int().min(1).max(1000).default(100)
-      }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId, includeMembers, memberLimit }) => {
       client.policy.assertGuild(guildId);
@@ -122,7 +151,8 @@ export function registerTools(args: {
         limit: z.number().int().min(1).max(100).default(50),
         before: Snowflake.optional(),
         after: Snowflake.optional()
-      }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId, channelId, limit, before, after }) => {
       await client.assertChannelGuild(channelId, guildId);
@@ -142,7 +172,8 @@ export function registerTools(args: {
         userId: Snowflake.optional(),
         limit: z.number().int().min(1).max(1000).default(100),
         after: Snowflake.optional()
-      }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId, userId, limit, after }) => {
       client.policy.assertGuild(guildId);
@@ -753,7 +784,8 @@ export function registerTools(args: {
         userId: Snowflake.optional(),
         actionType: z.number().int().optional(),
         before: Snowflake.optional()
-      }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId, limit, userId, actionType, before }) => {
       client.policy.assertGuild(guildId);
@@ -769,7 +801,8 @@ export function registerTools(args: {
     "discord_plan_blueprint",
     {
       description: "Compare a version-1 server blueprint with the live guild and return a non-destructive action plan.",
-      inputSchema: { guildId: Snowflake, blueprint: ServerBlueprintSchema }
+      inputSchema: { guildId: Snowflake, blueprint: ServerBlueprintSchema },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId, blueprint }) => {
       client.policy.assertGuild(guildId);

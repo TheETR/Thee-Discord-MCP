@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppConfig } from "../src/config.js";
-import { DiscordClient } from "../src/discord.js";
+import { DiscordClient, discordRestOptions } from "../src/discord.js";
 
 const guildId = "123456789012345678";
 const channelId = "234567890123456789";
@@ -32,6 +32,23 @@ function client() {
 }
 
 describe("raw Discord route scoping", () => {
+  it("passes bounded timeout and retry settings to the Discord REST client", () => {
+    const config: AppConfig = {
+      token: "test-token-that-is-long-enough",
+      allowedGuildIds: new Set([guildId]),
+      allowedUserIds: new Set([]),
+      mode: "read-only",
+      destructiveEnabled: false,
+      confirmationTtlSeconds: 300,
+      requestTimeoutMs: 25_000,
+      requestRetries: 2,
+      maxBulkActions: 100,
+      stateFile: ".data/test-state.json",
+      auditReasonPrefix: "test"
+    };
+    expect(discordRestOptions(config)).toMatchObject({ version: "10", timeout: 25_000, retries: 2 });
+  });
+
   it("accepts verified guild-owned top-level resources", async () => {
     const instance = client();
     await expect(instance.assertScopedRoute(guildId, `/stage-instances/${channelId}`)).resolves.toBe(`/stage-instances/${channelId}`);

@@ -77,7 +77,7 @@ All writes are protected by the configured safety mode. Privileged and destructi
 - **Private messages:** one-to-one DM tools are available only for recipients explicitly listed in `DISCORD_ALLOWED_USER_IDS`. The list is empty by default; group DMs and arbitrary recipient discovery remain unavailable.
 - **Webhook credentials:** webhook tokens are never returned in tool results. Execution requires the caller to supply the token for that call; it is not stored by the MCP.
 - **Legacy guide webhooks:** nine guide webhooks were still present in the live guild on 2026-08-23. They must be deliberately revoked after confirming their messages no longer depend on them; deletion is not implied by documentation cleanup.
-- **Operator/runtime separation:** the management token belongs to Thee Discord MCP, not the ELALEM product application. It cannot prove ELALEM's public-bot toggle, installation settings, legal URLs, command registration, or privileged intents.
+- **Operator/runtime separation:** `discord_health` with `action: "release_readiness"` can audit public-install settings, legal URLs, scopes, commands, visible intent flags, and guild permissions for the application authenticated by the active token. The management token belongs to Thee Discord MCP, not the ELALEM product application, so ELALEM itself must be checked using its own application token and Developer Portal account.
 - **Discord hierarchy:** the operator cannot manage roles or members at or above its highest role, regardless of requested permissions.
 - **Transport:** the public server currently uses local stdio. A remote HTTP deployment would need authentication, per-client authorization, rate limiting, and secret storage before it is safe to expose.
 - **Human verification:** Discord UI changes, onboarding flow order, mobile rendering, role colors, and voice-category visibility should still receive a final member-view check.
@@ -93,6 +93,6 @@ All writes are protected by the configured safety mode. Privileged and destructi
 7. Test the onboarding flow with a non-staff account.
 8. Read Server Rules with `discord_membership_screening`, preview any update, then confirm the final text in Discord's Access screen.
 9. Run the three ELALEM owner setup commands, then verify with a normal member that ordinary messages in `#emsali-chat` receive a reply and commands are contained in `#command-chat`.
-10. Verify the ELALEM product application's public installation, legal links, command registration, and required privileged intents in its own Developer Portal account.
+10. Run `discord_health` with `action: "release_readiness"` under the ELALEM product application token, then verify its public installation, legal links, command registration, and required privileged intents in its own Developer Portal account.
 11. Review Server Profile Traits manually because Discord does not permit bot-token access to that setting.
 12. Decide whether to revoke the nine legacy guide webhooks; do not leave known credentials active by accident.

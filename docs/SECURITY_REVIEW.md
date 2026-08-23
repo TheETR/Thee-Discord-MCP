@@ -36,6 +36,8 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 - Privileged blueprint approval binds to the blueprint digest, exact action-plan digest, and a stable projection of live guild preconditions; volatile presence/member counts are excluded.
 - Blueprint execution writes a versioned journal before and around every action, records returned resource IDs and failures, links matching recovery attempts, uses deterministic message nonces for uncertain retries, and seals successful runs with a final applied-plan digest.
 - Write tools default to dry-run and attach audit reasons where Discord supports them.
+- Discord network attempts use bounded, validated timeout and retry settings; the defaults match `@discordjs/rest` (15 seconds and three retries) and cannot be configured beyond 60 seconds or five retries.
+- Public-release readiness is a read-only audit of the application authenticated by the active bot token. It omits owner/team data and explicitly leaves member-flow and Server Profile checks manual.
 
 ## Residual work
 
@@ -43,7 +45,7 @@ This review treats Thee Discord MCP as a privileged local operator, not a genera
 
 - Emit structured redacted audit events with request IDs, operation family, guild, risk, duration, retry count, rate-limit bucket, and Discord audit-log reason.
 - Add deterministic retry/failure tests for `429`, network timeouts, Discord `5xx`, malformed responses, and partial blueprint execution.
-- Generate the public capability inventory from tool schemas instead of maintaining explanatory lists by hand.
+- Extend the generated capability inventory with explicit per-operation risk metadata rather than inferring risk from action names.
 - Add contract tests against recorded sanitized Discord responses for unstable or fast-moving endpoints.
 
 ### P3

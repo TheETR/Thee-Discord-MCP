@@ -28,11 +28,11 @@ A safety-gated Discord administration MCP server built on Discord's official RES
 - Bot and application profile management, including avatar and banner data URIs
 - A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
-There are **49 MCP tools exposing 167 schema-declared operations**. The operation count treats every top-level `action` choice as one operation and every single-purpose tool as one operation. Related work stays together: for example, one `discord_guild_operations` tool contains preview, role-count, prune, integration, vanity URL, bulk-ban, voice-region, and incident actions instead of publishing eleven separate executables. The smoke test calculates and locks both inventory totals so documentation drift fails validation.
+There are **49 MCP tools exposing 168 schema-declared operations**. The operation count treats every top-level `action` choice as one operation and every single-purpose tool as one operation. Related work stays together: for example, one `discord_guild_operations` tool contains preview, role-count, prune, integration, vanity URL, bulk-ban, voice-region, and incident actions instead of publishing eleven separate executables. The smoke test calculates and locks both inventory totals so documentation drift fails validation.
 
 Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messages have a separate `DISCORD_ALLOWED_USER_IDS` boundary, are empty by default, and verify the one-to-one DM recipient before every read or write. The raw escape hatch remains guild-scoped; it canonicalizes paths before authorization, verifies indirect guild/channel IDs in request bodies, and never becomes a general Discord request proxy.
 
-`discord_capabilities` reports the inventory totals, grouping rule, safety model, and named operation families without contacting Discord. Empty `204 No Content` responses are normalized to `{ "ok": true }`; webhook credentials and uploaded data URIs are redacted from previews and tool results.
+`discord_capabilities` reports or searches the grouped operation families without contacting Discord, so a client can discover a narrow capability without loading a separate tool for every endpoint. Three static MCP resources expose the capability index, safety model, and public-release checklist at `discord://capabilities`, `discord://safety`, and `discord://public-release`. The committed [machine-readable capability inventory](docs/capabilities.json) is generated from the real MCP handshake and records each tool's actions, schema size, schema digest, annotations, and resource count; CI fails if it drifts. Empty `204 No Content` responses are normalized to `{ "ok": true }`; webhook credentials and uploaded data URIs are redacted from previews and tool results.
 
 ## Coverage at a glance
 
@@ -95,6 +95,8 @@ DISCORD_ALLOWED_GUILD_IDS=123456789012345678
 DISCORD_ALLOWED_USER_IDS=
 DISCORD_MODE=read-only
 DISCORD_CONFIRMATION_TTL_SECONDS=300
+DISCORD_REQUEST_TIMEOUT_MS=15000
+DISCORD_REQUEST_RETRIES=3
 ```
 
 Leave `DISCORD_ALLOWED_USER_IDS` empty unless the bot should communicate with specific users. Add only comma-separated Discord user IDs whose one-to-one DM access you intend to permit. Group DMs and arbitrary recipients are rejected.
@@ -121,6 +123,8 @@ tool_timeout_sec = 120
 ```
 
 Restart the client and export a snapshot before making changes. Review the channels, roles, forums, and permission overwrites while the server is still in `read-only` mode.
+
+For a public bot release, call `discord_health` with `action: "release_readiness"` and an allowlisted `guildId`. It verifies the current token/application identity, public-install setting, legal URLs, install scopes, command registration, visible Message Content flags, guild membership, and the bot's role permissions. It intentionally reports member-flow acceptance and Server Profile traits as manual checks. The result applies only to the application authenticated by the active token; it cannot inspect a separate product bot.
 
 Once the snapshot looks right, set `DISCORD_MODE=safe-write`, restart the MCP server, and apply ordinary changes. Keep destructive mode disabled until a specific deletion or moderation action is needed.
 
@@ -174,7 +178,7 @@ pnpm test
 pnpm build
 ```
 
-The server uses stdio, so stdout is reserved for MCP protocol traffic; operational messages go to stderr. Discord rate limits are handled by `@discordjs/rest`.
+The server uses stdio, so stdout is reserved for MCP protocol traffic; operational messages go to stderr. Discord rate limits, transient timeouts, and retryable server failures are handled by `@discordjs/rest`. Each network attempt is bounded by `DISCORD_REQUEST_TIMEOUT_MS` (15 seconds by default), and `DISCORD_REQUEST_RETRIES` controls the bounded retry count (three by default).
 
 ## License
 

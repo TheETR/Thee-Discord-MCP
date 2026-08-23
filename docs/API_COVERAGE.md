@@ -1,6 +1,6 @@
 # Discord API Coverage
 
-Thee Discord MCP groups related Discord REST operations into named tools. The current inventory is **49 MCP tools and 167 schema-declared operations**. Every top-level `action` choice counts as one operation; a single-purpose tool counts as one. The MCP handshake calculates and verifies both totals.
+Thee Discord MCP groups related Discord REST operations into named tools. The current inventory is **49 MCP tools, 168 schema-declared operations, and 3 static MCP resources**. Every top-level `action` choice counts as one operation; a single-purpose tool counts as one. The MCP handshake calculates and verifies all totals.
 
 ## Administration surfaces
 
@@ -14,6 +14,9 @@ Thee Discord MCP groups related Discord REST operations into named tools. The cu
 | Integrations | Webhooks, integrations, guild/global application commands, linked-role metadata, guild templates |
 | Controlled DMs | One-to-one DM open/read/send/edit/delete for explicitly allowlisted recipients only |
 | Operations | Snapshots, dry-run plans, journaled/recoverable idempotent blueprints, scoped raw REST |
+| Release checks | Active application identity, public install, legal URLs, OAuth scopes, command registration, Message Content flags, guild membership, and role-permission coverage |
+
+Static resources provide progressive, read-only discovery without contacting Discord: `discord://capabilities`, `discord://safety`, and `discord://public-release`. They are immutable for the life of a process, so resource subscriptions are intentionally unnecessary.
 
 ## Safety model
 
@@ -46,4 +49,4 @@ Thee Discord MCP groups related Discord REST operations into named tools. The cu
 
 ## Verification
 
-`pnpm check` runs typechecking, unit tests, a production build, and an MCP handshake that verifies the complete named tool inventory.
+`pnpm check` runs typechecking, unit tests, a production build, an MCP handshake, and a drift check against `docs/capabilities.json`. The generated artifact records all tool names, declared actions, schema byte sizes, SHA-256 schema digests, and MCP annotations.

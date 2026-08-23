@@ -1,4 +1,4 @@
-import { REST, type RawFile } from "@discordjs/rest";
+import { REST, type RESTOptions, type RawFile } from "@discordjs/rest";
 
 import type { AppConfig } from "./config.js";
 import { SafetyPolicy } from "./safety.js";
@@ -50,12 +50,20 @@ export interface DiscordRequestOptions {
   appendToFormData?: boolean;
 }
 
+export function discordRestOptions(config: AppConfig): Partial<RESTOptions> {
+  return {
+    version: "10",
+    timeout: config.requestTimeoutMs ?? 15_000,
+    retries: config.requestRetries ?? 3
+  };
+}
+
 export class DiscordClient {
   private readonly rest: REST;
   readonly policy: SafetyPolicy;
 
   constructor(private readonly config: AppConfig) {
-    this.rest = new REST({ version: "10" }).setToken(config.token);
+    this.rest = new REST(discordRestOptions(config)).setToken(config.token);
     this.policy = new SafetyPolicy(config);
   }
 

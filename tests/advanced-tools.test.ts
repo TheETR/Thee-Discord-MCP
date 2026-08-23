@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { membershipScreeningBody, queryString, redactWebhookSecrets } from "../src/advanced-tools.js";
+import { membershipScreeningBody, queryString, redactWebhookSecrets, searchCapabilityFamilies } from "../src/advanced-tools.js";
 
 describe("advanced tool helpers", () => {
   it("encodes query parameters and omits undefined values", () => {
@@ -43,5 +43,25 @@ describe("advanced tool helpers", () => {
       required: true,
       values: ["Treat people with respect.", "Keep discussions in the right channels."]
     }]);
+  });
+
+  it("searches grouped capabilities without requiring the full schema catalog", () => {
+    expect(searchCapabilityFamilies("bulk delete")).toEqual({
+      messages: ["discord_message.bulk_delete"]
+    });
+    expect(searchCapabilityFamilies(undefined, "direct_messages")).toEqual({
+      direct_messages: [
+        "discord_dm.open",
+        "discord_dm.list",
+        "discord_dm.get",
+        "discord_dm.send",
+        "discord_dm.edit",
+        "discord_dm.delete"
+      ]
+    });
+  });
+
+  it("rejects unknown capability families", () => {
+    expect(() => searchCapabilityFamilies(undefined, "unknown")).toThrow(/Unknown capability family/);
   });
 });

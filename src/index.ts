@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { loadConfig, packageRoot, redactConfig } from "./config.js";
 import { DiscordClient } from "./discord.js";
+import { registerResources } from "./resources.js";
 import { StateStore } from "./state.js";
 import { registerTools } from "./tools.js";
 
@@ -20,6 +21,7 @@ async function main() {
   });
 
   registerTools({ server, client, config, store });
+  registerResources(server);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 

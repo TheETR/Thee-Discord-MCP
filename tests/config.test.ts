@@ -37,3 +37,35 @@ describe("confirmation expiry configuration", () => {
     })).toThrow(/DISCORD_CONFIRMATION_TTL_SECONDS/);
   });
 });
+
+describe("Discord request resilience configuration", () => {
+  const environment = {
+    DISCORD_BOT_TOKEN: "test-token-that-is-long-enough",
+    DISCORD_ALLOWED_GUILD_IDS: "123456789012345678"
+  };
+
+  it("uses bounded retry and timeout defaults", () => {
+    const config = loadConfig(environment);
+    expect(config.requestTimeoutMs).toBe(15_000);
+    expect(config.requestRetries).toBe(3);
+  });
+
+  it("accepts bounded custom retry and timeout values", () => {
+    const config = loadConfig({
+      ...environment,
+      DISCORD_REQUEST_TIMEOUT_MS: "25000",
+      DISCORD_REQUEST_RETRIES: "4"
+    });
+    expect(config.requestTimeoutMs).toBe(25_000);
+    expect(config.requestRetries).toBe(4);
+  });
+
+  it.each([
+    ["DISCORD_REQUEST_TIMEOUT_MS", "999"],
+    ["DISCORD_REQUEST_TIMEOUT_MS", "60001"],
+    ["DISCORD_REQUEST_RETRIES", "-1"],
+    ["DISCORD_REQUEST_RETRIES", "6"]
+  ])("rejects an unsafe %s value", (name, value) => {
+    expect(() => loadConfig({ ...environment, [name]: value })).toThrow(name);
+  });
+});

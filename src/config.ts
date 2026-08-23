@@ -37,6 +37,8 @@ const EnvironmentSchema = z.object({
   DISCORD_MODE: ModeSchema.default("read-only"),
   DISCORD_ENABLE_DESTRUCTIVE: z.string().default("false"),
   DISCORD_CONFIRMATION_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  DISCORD_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
+  DISCORD_REQUEST_RETRIES: z.coerce.number().int().min(0).max(5).default(3),
   DISCORD_MAX_BULK_ACTIONS: z.coerce.number().int().min(1).max(1000).default(100),
   DISCORD_STATE_FILE: z.string().default(".data/state.json"),
   DISCORD_AUDIT_REASON_PREFIX: z.string().min(1).max(200).default("TheeDiscordMCP")
@@ -49,6 +51,8 @@ export interface AppConfig {
   mode: Mode;
   destructiveEnabled: boolean;
   confirmationTtlSeconds: number;
+  requestTimeoutMs?: number;
+  requestRetries?: number;
   maxBulkActions: number;
   stateFile: string;
   auditReasonPrefix: string;
@@ -84,6 +88,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     mode: parsed.data.DISCORD_MODE,
     destructiveEnabled: parsed.data.DISCORD_ENABLE_DESTRUCTIVE.toLowerCase() === "true",
     confirmationTtlSeconds: parsed.data.DISCORD_CONFIRMATION_TTL_SECONDS,
+    requestTimeoutMs: parsed.data.DISCORD_REQUEST_TIMEOUT_MS,
+    requestRetries: parsed.data.DISCORD_REQUEST_RETRIES,
     maxBulkActions: parsed.data.DISCORD_MAX_BULK_ACTIONS,
     stateFile: resolveStateFile(parsed.data.DISCORD_STATE_FILE),
     auditReasonPrefix: parsed.data.DISCORD_AUDIT_REASON_PREFIX
@@ -97,6 +103,8 @@ export function redactConfig(config: AppConfig) {
     mode: config.mode,
     destructiveEnabled: config.destructiveEnabled,
     confirmationTtlSeconds: config.confirmationTtlSeconds,
+    requestTimeoutMs: config.requestTimeoutMs ?? 15_000,
+    requestRetries: config.requestRetries ?? 3,
     maxBulkActions: config.maxBulkActions,
     stateFile: config.stateFile,
     auditReasonPrefix: config.auditReasonPrefix
