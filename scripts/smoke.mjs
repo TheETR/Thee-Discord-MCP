@@ -101,8 +101,8 @@ try {
     console.log(`Wrote ${inventoryPath}`);
   }
   if (process.argv.includes("--check")) {
-    const committed = await readFile(inventoryPath, "utf8");
-    if (committed !== inventoryJson) {
+    const committed = JSON.parse(await readFile(inventoryPath, "utf8"));
+    if (JSON.stringify(committed) !== JSON.stringify(inventory)) {
       throw new Error("docs/capabilities.json is stale. Run pnpm inventory:write and commit the result.");
     }
   }
