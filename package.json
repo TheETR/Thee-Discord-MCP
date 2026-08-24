@@ -3,8 +3,34 @@
   "version": "0.1.0",
   "description": "A safety-gated MCP server for managing Discord guilds through the official REST API.",
   "type": "module",
-  "private": true,
   "license": "MIT",
+  "keywords": [
+    "mcp",
+    "discord",
+    "discord-api",
+    "server-administration",
+    "model-context-protocol"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheETR/Thee-Discord-MCP.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TheETR/Thee-Discord-MCP/issues"
+  },
+  "homepage": "https://github.com/TheETR/Thee-Discord-MCP#readme",
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "docs",
+    "examples",
+    ".env.example",
+    "mcp.config.example.toml"
+  ],
   "engines": {
     "node": ">=20.19"
   },
@@ -19,7 +45,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke": "node scripts/smoke.mjs",
-    "check": "pnpm typecheck && pnpm test && pnpm build && pnpm smoke"
+    "inventory:write": "node scripts/smoke.mjs --write",
+    "inventory:check": "node scripts/smoke.mjs --check",
+    "check": "pnpm typecheck && pnpm test && pnpm build && pnpm smoke && pnpm inventory:check",
+    "prepack": "npm run build"
   },
   "dependencies": {
     "@discordjs/rest": "^2.6.3",

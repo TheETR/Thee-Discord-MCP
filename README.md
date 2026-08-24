@@ -1,6 +1,8 @@
-# TheeDiscordMCP
+# Thee Discord MCP
 
-A local MCP server for inspecting and managing an allowlisted Discord server through Discord's official REST API. It covers day-to-day administration, dry-run planning, local resource tracking, audit reasons, and explicit safeguards around high-impact actions.
+[![CI](https://github.com/TheETR/Thee-Discord-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/TheETR/Thee-Discord-MCP/actions/workflows/ci.yml)
+
+A safety-gated Discord administration MCP server built on Discord's official REST API. It combines broad guild management, dry-run planning, local resource tracking, audit reasons, and explicit safeguards around high-impact actions without turning every related operation into a separate tool.
 
 ## What it manages
 
@@ -22,15 +24,15 @@ A local MCP server for inspecting and managing an allowlisted Discord server thr
 - Optional one-to-one DMs restricted to an explicit user allowlist and disabled by default
 - Membership Screening rule reads and guarded updates
 - AutoMod rules, onboarding, welcome screen, emojis, and audit-log reads
-- Idempotent JSON blueprints with a dry-run planner
+- Idempotent JSON blueprints with a dry-run planner, snapshot-bound approvals, and restart-aware execution journals
 - Bot and application profile management, including avatar and banner data URIs
 - A tightly scoped raw REST escape hatch for new Discord endpoints and guild-owned resources
 
-There are **49 MCP tools exposing 166 schema-declared operations**. The operation count treats every top-level `action` choice as one operation and every single-purpose tool as one operation. Related work stays together: for example, one `discord_guild_operations` tool contains preview, role-count, prune, integration, vanity URL, bulk-ban, voice-region, and incident actions instead of publishing eleven separate executables. The smoke test calculates and locks both inventory totals so documentation drift fails validation.
+There are **49 MCP tools exposing 168 schema-declared operations**. The operation count treats every top-level `action` choice as one operation and every single-purpose tool as one operation. Related work stays together: for example, one `discord_guild_operations` tool contains preview, role-count, prune, integration, vanity URL, bulk-ban, voice-region, and incident actions instead of publishing eleven separate executables. The smoke test calculates and locks both inventory totals so documentation drift fails validation.
 
-Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messages have a separate `DISCORD_ALLOWED_USER_IDS` boundary, are empty by default, and verify the one-to-one DM recipient before every read or write. The raw escape hatch remains guild-scoped; it accepts routes under an allowed guild and verified guild-owned resources without becoming a general Discord request proxy.
+Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messages have a separate `DISCORD_ALLOWED_USER_IDS` boundary, are empty by default, and verify the one-to-one DM recipient before every read or write. The raw escape hatch remains guild-scoped; it canonicalizes paths before authorization, verifies indirect guild/channel IDs in request bodies, and never becomes a general Discord request proxy.
 
-`discord_capabilities` reports the inventory totals, grouping rule, safety model, and named operation families without contacting Discord. Empty `204 No Content` responses are normalized to `{ "ok": true }`; webhook credentials and uploaded data URIs are redacted from previews and tool results.
+`discord_capabilities` reports or searches the grouped operation families without contacting Discord, so a client can discover a narrow capability without loading a separate tool for every endpoint. Three static MCP resources expose the capability index, safety model, and public-release checklist at `discord://capabilities`, `discord://safety`, and `discord://public-release`. The committed [machine-readable capability inventory](docs/capabilities.json) is generated from the real MCP handshake and records each tool's actions, schema size, schema digest, annotations, and resource count; CI fails if it drifts. Empty `204 No Content` responses are normalized to `{ "ok": true }`; webhook credentials and uploaded data URIs are redacted from previews and tool results.
 
 ## Coverage at a glance
 
@@ -47,13 +49,13 @@ Every guild call is limited to IDs in `DISCORD_ALLOWED_GUILD_IDS`. Direct messag
 
 ## Safety modes
 
-| Mode | Reads | Create/update | Delete, ban, kick, raw writes |
-|---|---:|---:|---:|
-| `read-only` | yes | no | no |
-| `safe-write` | yes | yes | no |
-| `full` | yes | yes | only with destructive opt-in and exact confirmation |
+| Mode | Reads | Ordinary create/update | Privileged writes | Destructive writes |
+|---|---:|---:|---:|---:|
+| `read-only` | yes | no | no | no |
+| `safe-write` | yes | yes | no | no |
+| `full` | yes | yes | one-time dry-run confirmation | destructive opt-in and one-time dry-run confirmation |
 
-The default is `read-only`. Blueprint application never deletes resources. It creates or updates matching resources and tracks their Discord IDs in `.data/state.json` so reruns do not create duplicates.
+The default is `read-only`. Permission overwrites, role permission changes, guild security settings, and blueprints containing those fields are privileged writes: they require `full` mode and a payload-bound confirmation returned by the matching dry-run, but not the separate destructive opt-in. Confirmations are held only in process memory, expire after `DISCORD_CONFIRMATION_TTL_SECONDS` (five minutes by default), are consumed before the Discord request begins, and become invalid after a server restart. Blueprint approval also binds to the exact planned actions and a stable live-guild precondition snapshot, so drift requires a new dry-run. Blueprint application never deletes unmanaged resources.
 
 ## 1. Create the Discord operator
 
@@ -79,7 +81,8 @@ Indexed guild-message search additionally requires the privileged **Message Cont
 Requires Node.js 20.19 or newer and pnpm.
 
 ```powershell
-cd TheeDiscordMCP
+git clone https://github.com/TheETR/Thee-Discord-MCP.git
+cd Thee-Discord-MCP
 pnpm install
 Copy-Item .env.example .env
 ```
@@ -91,6 +94,9 @@ DISCORD_BOT_TOKEN=your_dedicated_bot_token
 DISCORD_ALLOWED_GUILD_IDS=123456789012345678
 DISCORD_ALLOWED_USER_IDS=
 DISCORD_MODE=read-only
+DISCORD_CONFIRMATION_TTL_SECONDS=300
+DISCORD_REQUEST_TIMEOUT_MS=15000
+DISCORD_REQUEST_RETRIES=3
 ```
 
 Leave `DISCORD_ALLOWED_USER_IDS` empty unless the bot should communicate with specific users. Add only comma-separated Discord user IDs whose one-to-one DM access you intend to permit. Group DMs and arbitrary recipients are rejected.
@@ -110,13 +116,15 @@ Add the server to your MCP client configuration. An editable example is included
 ```toml
 [mcp_servers.thee-discord]
 command = "node"
-args = ["C:/path/to/TheeDiscordMCP/dist/index.js"]
-cwd = "C:/path/to/TheeDiscordMCP"
+args = ["C:/path/to/Thee-Discord-MCP/dist/index.js"]
+cwd = "C:/path/to/Thee-Discord-MCP"
 startup_timeout_sec = 20
 tool_timeout_sec = 120
 ```
 
 Restart the client and export a snapshot before making changes. Review the channels, roles, forums, and permission overwrites while the server is still in `read-only` mode.
+
+For a public bot release, call `discord_health` with `action: "release_readiness"` and an allowlisted `guildId`. It verifies the current token/application identity, public-install setting, legal URLs, install scopes, command registration, visible Message Content flags, guild membership, and the bot's role permissions. It intentionally reports member-flow acceptance and Server Profile traits as manual checks. The result applies only to the application authenticated by the active token; it cannot inspect a separate product bot.
 
 Once the snapshot looks right, set `DISCORD_MODE=safe-write`, restart the MCP server, and apply ordinary changes. Keep destructive mode disabled until a specific deletion or moderation action is needed.
 
@@ -141,6 +149,8 @@ Blueprint channel mentions use `{{channel:key}}`; they are resolved to real clic
 
 The blueprint deliberately performs no deletion. Existing channels or roles with different names are left alone unless their tracked key points to them. Review duplicate or obsolete resources separately before removing anything.
 
+Actual blueprint runs persist a versioned journal before the first Discord write and around every planned action. The journal records precondition, plan, and blueprint digests; per-action pending/running/completed/failed state; returned resource IDs; recovery ancestry; and a final applied-plan digest. Version-1 state files migrate to version 2 on their next save. A retry of the same interrupted blueprint is linked as a recovery attempt, while deterministic message nonces plus a recent-message lookup reduce duplicate guide posts after an uncertain interruption. Discord has no multi-resource transaction or rollback, so inspect failed journals and rerun the same blueprint after correcting the cause.
+
 ## Destructive operations
 
 To permit a specific destructive action temporarily:
@@ -150,9 +160,15 @@ DISCORD_MODE=full
 DISCORD_ENABLE_DESTRUCTIVE=true
 ```
 
-Each destructive tool returns or documents the exact confirmation text it expects, such as `DELETE CHANNEL <id>`. High-fan-out operations such as bulk bans and pruning include a digest derived from the exact target set, so a confirmation cannot be reused for a different batch. Irreversible announcement crossposts and linked-role metadata replacement use the same full-mode gate. Return to `safe-write` or `read-only` afterward.
+Run the exact operation with `dryRun: true`, review the plan, then copy its `expectedConfirmation` into `confirm` before it expires. The token is single-use—even a failed downstream Discord request requires a fresh dry-run—and is bound to an operation-specific base such as `DELETE CHANNEL <id>`. High-fan-out operations such as bulk bans and pruning also include a digest derived from the exact target set, so a confirmation cannot authorize a different batch. Irreversible announcement crossposts and linked-role metadata replacement use the same full-mode gate. Return to `safe-write` or `read-only` afterward.
 
-The raw REST tool treats every non-GET request as destructive. This keeps an unfamiliar endpoint from bypassing the named safety gates.
+The raw REST tool treats every non-GET request as destructive. Its one-time confirmation includes a SHA-256-derived digest of the exact request body, so a confirmation for one payload cannot authorize another. Absolute URLs, fragments, control characters, encoded path separators, dot segments, duplicate slashes, cross-guild body references, and unverified channel references are rejected before the request is sent.
+
+## Discord platform boundaries
+
+The server uses a bot token only. It does not automate user-only endpoints, self-bots, account sessions, or unsupported client APIs. For example, Discord's Server Profile **Traits** field is visible in the desktop client but its profile endpoint rejects bot tokens with `Bots cannot use this endpoint`; that field must currently be changed by a signed-in server administrator in Discord.
+
+See [Discord API Coverage](docs/API_COVERAGE.md) for named surfaces and deliberate omissions, [Security Review and Roadmap](docs/SECURITY_REVIEW.md) for threat boundaries and remaining hardening work, and [ELALEM Server Handoff](docs/ELALEM.md) for the live server layout and runtime boundaries.
 
 ## Development
 
@@ -162,7 +178,7 @@ pnpm test
 pnpm build
 ```
 
-The server uses stdio, so stdout is reserved for MCP protocol traffic; operational messages go to stderr. Discord rate limits are handled by `@discordjs/rest`.
+The server uses stdio, so stdout is reserved for MCP protocol traffic; operational messages go to stderr. Discord rate limits, transient timeouts, and retryable server failures are handled by `@discordjs/rest`. Each network attempt is bounded by `DISCORD_REQUEST_TIMEOUT_MS` (15 seconds by default), and `DISCORD_REQUEST_RETRIES` controls the bounded retry count (three by default).
 
 ## License
 

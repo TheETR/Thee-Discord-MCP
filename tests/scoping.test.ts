@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppConfig } from "../src/config.js";
-import { DiscordClient } from "../src/discord.js";
+import { DiscordClient, discordRestOptions } from "../src/discord.js";
 
 const guildId = "123456789012345678";
 const channelId = "234567890123456789";
@@ -15,6 +15,7 @@ function client() {
     allowedUserIds: new Set([]),
     mode: "read-only",
     destructiveEnabled: false,
+    confirmationTtlSeconds: 300,
     maxBulkActions: 100,
     stateFile: ".data/test-state.json",
     auditReasonPrefix: "test"
@@ -31,13 +32,54 @@ function client() {
 }
 
 describe("raw Discord route scoping", () => {
+  it("passes bounded timeout and retry settings to the Discord REST client", () => {
+    const config: AppConfig = {
+      token: "test-token-that-is-long-enough",
+      allowedGuildIds: new Set([guildId]),
+      allowedUserIds: new Set([]),
+      mode: "read-only",
+      destructiveEnabled: false,
+      confirmationTtlSeconds: 300,
+      requestTimeoutMs: 25_000,
+      requestRetries: 2,
+      maxBulkActions: 100,
+      stateFile: ".data/test-state.json",
+      auditReasonPrefix: "test"
+    };
+    expect(discordRestOptions(config)).toMatchObject({ version: "10", timeout: 25_000, retries: 2 });
+  });
+
   it("accepts verified guild-owned top-level resources", async () => {
     const instance = client();
-    await expect(instance.assertScopedRoute(guildId, `/stage-instances/${channelId}`)).resolves.toBeUndefined();
-    await expect(instance.assertScopedRoute(guildId, "/stage-instances", "POST", { channel_id: channelId })).resolves.toBeUndefined();
-    await expect(instance.assertScopedRoute(guildId, "/webhooks/456789012345678901")).resolves.toBeUndefined();
-    await expect(instance.assertScopedRoute(guildId, "/invites/example-code")).resolves.toBeUndefined();
-    await expect(instance.assertScopedRoute(guildId, `/applications/${botId}/guilds/${guildId}/commands`)).resolves.toBeUndefined();
+    await expect(instance.assertScopedRoute(guildId, `/stage-instances/${channelId}`)).resolves.toBe(`/stage-instances/${channelId}`);
+    await expect(instance.assertScopedRoute(guildId, "/stage-instances", "POST", { channel_id: channelId })).resolves.toBe("/stage-instances");
+    await expect(instance.assertScopedRoute(guildId, "/webhooks/456789012345678901")).resolves.toBe("/webhooks/456789012345678901");
+    await expect(instance.assertScopedRoute(guildId, "/invites/example-code")).resolves.toBe("/invites/example-code");
+    await expect(instance.assertScopedRoute(guildId, `/applications/${botId}/guilds/${guildId}/commands`)).resolves.toBe(`/applications/${botId}/guilds/${guildId}/commands`);
+  });
+
+  it("normalizes a missing leading slash before authorization and execution", async () => {
+    const instance = client();
+    await expect(instance.assertScopedRoute(guildId, `guilds/${guildId}?with_counts=true`)).resolves.toBe(`/guilds/${guildId}?with_counts=true`);
+  });
+
+  it.each([
+    `https://discord.com/api/v10/guilds/${guildId}`,
+    `//guilds/${guildId}`,
+    `/guilds/${guildId}/../users/@me`,
+    `/guilds/${guildId}/%2e%2e/users/@me`,
+    `/guilds/${guildId}/channels%2fother`,
+    `/guilds/${guildId}//channels`,
+    `/guilds/${guildId}/channels/`,
+    `/guilds/${guildId}#ignored`
+  ])("rejects non-canonical or structurally ambiguous route %s", async (route) => {
+    await expect(client().assertScopedRoute(guildId, route)).rejects.toThrow(/Raw route/);
+  });
+
+  it("rejects a request body that points at another guild", async () => {
+    await expect(client().assertScopedRoute(guildId, `/guilds/${guildId}/channels`, "POST", {
+      source_guild_id: "999999999999999999"
+    })).rejects.toThrow(/not selected guild/);
   });
 
   it("accepts only the exact allowlisted one-to-one DM recipient", async () => {
@@ -47,6 +89,7 @@ describe("raw Discord route scoping", () => {
       allowedUserIds: new Set([dmUserId]),
       mode: "read-only",
       destructiveEnabled: false,
+      confirmationTtlSeconds: 300,
       maxBulkActions: 100,
       stateFile: ".data/test-state.json",
       auditReasonPrefix: "test"

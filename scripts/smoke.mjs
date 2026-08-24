@@ -1,5 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { createHash } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 const inheritedEnvironment = Object.fromEntries(
   Object.entries(process.env).filter((entry) => entry[1] !== undefined)
@@ -23,6 +26,7 @@ const client = new Client({ name: "thee-discord-mcp-smoke", version: "1.0.0" });
 try {
   await client.connect(transport);
   const { tools } = await client.listTools();
+  const { resources } = await client.listResources();
   if (tools.length !== 49) {
     throw new Error(`Expected 49 MCP tools, received ${tools.length}.`);
   }
@@ -55,12 +59,52 @@ try {
   if (missing.length > 0) {
     throw new Error(`Missing advanced MCP tools: ${missing.join(", ")}`);
   }
+  const requiredResources = ["discord://capabilities", "discord://safety", "discord://public-release"];
+  const resourceUris = new Set(resources.map((resource) => resource.uri));
+  const missingResources = requiredResources.filter((uri) => !resourceUris.has(uri));
+  if (missingResources.length > 0) {
+    throw new Error(`Missing MCP resources: ${missingResources.join(", ")}`);
+  }
   const declaredOperations = tools.reduce((total, tool) => {
     const actionSchema = tool.inputSchema?.properties?.action;
     return total + (Array.isArray(actionSchema?.enum) ? actionSchema.enum.length : 1);
   }, 0);
-  if (declaredOperations !== 166) {
-    throw new Error(`Expected 166 schema-declared operations, received ${declaredOperations}.`);
+  if (declaredOperations !== 168) {
+    throw new Error(`Expected 168 schema-declared operations, received ${declaredOperations}.`);
+  }
+  const normalizedTools = tools
+    .map((tool) => {
+      const actionSchema = tool.inputSchema?.properties?.action;
+      const schemaJson = JSON.stringify(tool.inputSchema ?? {});
+      return {
+        name: tool.name,
+        description: tool.description ?? "",
+        actions: Array.isArray(actionSchema?.enum) ? actionSchema.enum : [tool.name],
+        schemaJsonBytes: Buffer.byteLength(schemaJson),
+        schemaSha256: createHash("sha256").update(schemaJson).digest("hex"),
+        annotations: tool.annotations ?? {}
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const inventory = {
+    generatedFrom: "MCP tools/list",
+    mcpTools: tools.length,
+    schemaDeclaredOperations: declaredOperations,
+    mcpResources: resources.length,
+    schemaJsonBytes: normalizedTools.reduce((total, tool) => total + tool.schemaJsonBytes, 0),
+    tools: normalizedTools
+  };
+  const inventoryJson = `${JSON.stringify(inventory, null, 2)}\n`;
+  const inventoryPath = resolve(process.cwd(), "docs", "capabilities.json");
+  if (process.argv.includes("--write")) {
+    await writeFile(inventoryPath, inventoryJson, "utf8");
+    console.log(`Wrote ${inventoryPath}`);
+  }
+  if (process.argv.includes("--check")) {
+    const committed = JSON.parse(await readFile(inventoryPath, "utf8"));
+    if (JSON.stringify(committed) !== JSON.stringify(inventory)) {
+      throw new Error("docs/capabilities.json is stale. Run pnpm inventory:write and commit the result.");
+    }
   }
   console.log(`MCP handshake passed; ${tools.length} tools and ${declaredOperations} schema-declared operations discovered.`);
 } finally {

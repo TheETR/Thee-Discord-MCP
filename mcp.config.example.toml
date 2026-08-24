@@ -1,6 +1,6 @@
 [mcp_servers.thee-discord]
 command = "node"
-args = ["C:/path/to/TheeDiscordMCP/dist/index.js"]
-cwd = "C:/path/to/TheeDiscordMCP"
+args = ["C:/path/to/Thee-Discord-MCP/dist/index.js"]
+cwd = "C:/path/to/Thee-Discord-MCP"
 startup_timeout_sec = 20
 tool_timeout_sec = 120

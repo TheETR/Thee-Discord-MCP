@@ -1,0 +1,40 @@
+name: Release artifacts
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/setup@v2
+        with:
+          version: 11.10.0
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20.19
+          cache: pnpm
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Build release evidence
+        run: |
+          mkdir artifacts
+          npm pack --pack-destination artifacts
+          pnpm sbom --sbom-format cyclonedx --prod --lockfile-only --out artifacts/sbom.cdx.json
+          sha256sum artifacts/*.tgz artifacts/sbom.cdx.json > artifacts/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: artifacts
+          if-no-files-found: error
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" artifacts/* --verify-tag --generate-notes

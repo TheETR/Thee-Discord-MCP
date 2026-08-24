@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, parse, resolve } from "node:path";
+import { dirname, isAbsolute, parse, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import dotenv from "dotenv";
@@ -15,11 +15,20 @@ function findProjectRoot(start: string): string {
   throw new Error("Could not locate TheeDiscordMCP package root.");
 }
 
-const projectRoot = findProjectRoot(dirname(fileURLToPath(import.meta.url)));
-dotenv.config({ path: resolve(projectRoot, ".env"), quiet: true });
+export const packageRoot = findProjectRoot(dirname(fileURLToPath(import.meta.url)));
+dotenv.config({ path: resolve(packageRoot, ".env"), quiet: true });
 
 export const ModeSchema = z.enum(["read-only", "safe-write", "full"]);
 export type Mode = z.infer<typeof ModeSchema>;
+
+export function resolveStateFile(path: string): string {
+  const resolved = resolve(packageRoot, path);
+  const projectRelative = relative(packageRoot, resolved);
+  if (projectRelative === "" || projectRelative.startsWith("..") || isAbsolute(projectRelative)) {
+    throw new Error("DISCORD_STATE_FILE must resolve to a file inside the package directory.");
+  }
+  return resolved;
+}
 
 const EnvironmentSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().min(20),
@@ -27,6 +36,9 @@ const EnvironmentSchema = z.object({
   DISCORD_ALLOWED_USER_IDS: z.string().default(""),
   DISCORD_MODE: ModeSchema.default("read-only"),
   DISCORD_ENABLE_DESTRUCTIVE: z.string().default("false"),
+  DISCORD_CONFIRMATION_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  DISCORD_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(15_000),
+  DISCORD_REQUEST_RETRIES: z.coerce.number().int().min(0).max(5).default(3),
   DISCORD_MAX_BULK_ACTIONS: z.coerce.number().int().min(1).max(1000).default(100),
   DISCORD_STATE_FILE: z.string().default(".data/state.json"),
   DISCORD_AUDIT_REASON_PREFIX: z.string().min(1).max(200).default("TheeDiscordMCP")
@@ -38,6 +50,9 @@ export interface AppConfig {
   allowedUserIds: ReadonlySet<string>;
   mode: Mode;
   destructiveEnabled: boolean;
+  confirmationTtlSeconds: number;
+  requestTimeoutMs?: number;
+  requestRetries?: number;
   maxBulkActions: number;
   stateFile: string;
   auditReasonPrefix: string;
@@ -72,8 +87,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     allowedUserIds: new Set(userIds),
     mode: parsed.data.DISCORD_MODE,
     destructiveEnabled: parsed.data.DISCORD_ENABLE_DESTRUCTIVE.toLowerCase() === "true",
+    confirmationTtlSeconds: parsed.data.DISCORD_CONFIRMATION_TTL_SECONDS,
+    requestTimeoutMs: parsed.data.DISCORD_REQUEST_TIMEOUT_MS,
+    requestRetries: parsed.data.DISCORD_REQUEST_RETRIES,
     maxBulkActions: parsed.data.DISCORD_MAX_BULK_ACTIONS,
-    stateFile: resolve(projectRoot, parsed.data.DISCORD_STATE_FILE),
+    stateFile: resolveStateFile(parsed.data.DISCORD_STATE_FILE),
     auditReasonPrefix: parsed.data.DISCORD_AUDIT_REASON_PREFIX
   };
 }
@@ -84,6 +102,9 @@ export function redactConfig(config: AppConfig) {
     allowedUserIds: [...config.allowedUserIds],
     mode: config.mode,
     destructiveEnabled: config.destructiveEnabled,
+    confirmationTtlSeconds: config.confirmationTtlSeconds,
+    requestTimeoutMs: config.requestTimeoutMs ?? 15_000,
+    requestRetries: config.requestRetries ?? 3,
     maxBulkActions: config.maxBulkActions,
     stateFile: config.stateFile,
     auditReasonPrefix: config.auditReasonPrefix

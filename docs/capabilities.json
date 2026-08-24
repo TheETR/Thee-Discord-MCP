@@ -1,0 +1,673 @@
+{
+  "generatedFrom": "MCP tools/list",
+  "mcpTools": 49,
+  "schemaDeclaredOperations": 168,
+  "mcpResources": 3,
+  "schemaJsonBytes": 35910,
+  "tools": [
+    {
+      "name": "discord_application_assets",
+      "description": "Manage this application's emojis and linked-role metadata schema.",
+      "actions": [
+        "list_emojis",
+        "get_emoji",
+        "create_emoji",
+        "modify_emoji",
+        "delete_emoji",
+        "get_role_connection_metadata",
+        "update_role_connection_metadata"
+      ],
+      "schemaJsonBytes": 1153,
+      "schemaSha256": "aaf5938dbbf3244333a2c2563a07e4eefa584221a04f80d9488b6a834b8ff474",
+      "annotations": {}
+    },
+    {
+      "name": "discord_application_command",
+      "description": "List and manage this application's guild-scoped or global slash, user, and message commands.",
+      "actions": [
+        "list",
+        "get",
+        "upsert",
+        "modify",
+        "delete",
+        "bulk_overwrite"
+      ],
+      "schemaJsonBytes": 717,
+      "schemaSha256": "29e1a1836d0bb59290c8108c8d08b92c68abf4dedffb2013b9a55564ea037791",
+      "annotations": {}
+    },
+    {
+      "name": "discord_apply_blueprint",
+      "description": "Idempotently create/update resources from one blueprint without deleting unmanaged resources. Guild settings, role permissions, or overwrites make the plan privileged and require full mode plus dry-run confirmation.",
+      "actions": [
+        "discord_apply_blueprint"
+      ],
+      "schemaJsonBytes": 4204,
+      "schemaSha256": "3b83b644c0baca7801b724f21e8a450b51ecc97a8a21106c427840d825c27d7e",
+      "annotations": {}
+    },
+    {
+      "name": "discord_audit_log",
+      "description": "Read Discord audit log entries for the allowed guild.",
+      "actions": [
+        "discord_audit_log"
+      ],
+      "schemaJsonBytes": 417,
+      "schemaSha256": "b5d3b320f273e71b8201d0e09ee56f79a0bd3bef438c91cbd23c22e7dd4ec527",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_automod",
+      "description": "List, create, modify, or delete Discord AutoMod rules. Create and modify are privileged; delete retains destructive gating.",
+      "actions": [
+        "list",
+        "create",
+        "modify",
+        "delete"
+      ],
+      "schemaJsonBytes": 503,
+      "schemaSha256": "c66bd8f2af995a8bd993e75e3f6f460b8d58116af143082f56d32cd3788b1777",
+      "annotations": {}
+    },
+    {
+      "name": "discord_capabilities",
+      "description": "Describe or search named Discord operation families and their safety requirements without making a network request.",
+      "actions": [
+        "discord_capabilities"
+      ],
+      "schemaJsonBytes": 197,
+      "schemaSha256": "4ba2b48daf0dafa596960989fcdf24c40192c1e3eb0743c2998afcbb041ed3d4",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "discord_channel_operations",
+      "description": "Inspect a channel, follow an announcement channel, trigger typing, or set a voice-channel status.",
+      "actions": [
+        "get",
+        "follow_announcement",
+        "trigger_typing",
+        "set_voice_status"
+      ],
+      "schemaJsonBytes": 554,
+      "schemaSha256": "a6f6cb58fe1d44428f62f65b5febb2c44e8869c2ade8049c5e021d6971899e06",
+      "annotations": {}
+    },
+    {
+      "name": "discord_current_application",
+      "description": "Read or modify the current Discord application profile and installation metadata. Modifications are privileged and require the one-time confirmation returned by dry-run.",
+      "actions": [
+        "get",
+        "modify"
+      ],
+      "schemaJsonBytes": 369,
+      "schemaSha256": "292b3bbf2e65ac3761c24fba65715be1258e196098a85dc4772cd93713ed1c99",
+      "annotations": {}
+    },
+    {
+      "name": "discord_current_bot_profile",
+      "description": "Read or modify this operator bot's username, avatar, and banner. Modifications are privileged and require the one-time confirmation returned by dry-run.",
+      "actions": [
+        "get",
+        "modify"
+      ],
+      "schemaJsonBytes": 369,
+      "schemaSha256": "292b3bbf2e65ac3761c24fba65715be1258e196098a85dc4772cd93713ed1c99",
+      "annotations": {}
+    },
+    {
+      "name": "discord_delete_channel",
+      "description": "Delete a channel. Requires full mode, destructive enablement, and an exact confirmation string.",
+      "actions": [
+        "discord_delete_channel"
+      ],
+      "schemaJsonBytes": 351,
+      "schemaSha256": "67d35b78477b9d83c83ad13fbcd97202df04a3ca6e2d4136fb69bd0bfae1115c",
+      "annotations": {}
+    },
+    {
+      "name": "discord_delete_role",
+      "description": "Delete a role with an exact confirmation string.",
+      "actions": [
+        "discord_delete_role"
+      ],
+      "schemaJsonBytes": 345,
+      "schemaSha256": "9235f4d94ab4ef462801a3065b82307b5263335270302bab495a20d8ba7533b5",
+      "annotations": {}
+    },
+    {
+      "name": "discord_directory",
+      "description": "Browse guild channels and roles, search members, or inspect bans with guild allowlist enforcement.",
+      "actions": [
+        "list_channels",
+        "find_channels",
+        "list_roles",
+        "search_members",
+        "list_bans",
+        "get_ban"
+      ],
+      "schemaJsonBytes": 666,
+      "schemaSha256": "c242b5c0a11e1774c26af8143daf08ab8a4b821e9e2003e3ad82244f8033491f",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_dm",
+      "description": "Use a one-to-one DM only for recipients explicitly listed in DISCORD_ALLOWED_USER_IDS. The feature is disabled by default.",
+      "actions": [
+        "open",
+        "list",
+        "get",
+        "send",
+        "edit",
+        "delete"
+      ],
+      "schemaJsonBytes": 733,
+      "schemaSha256": "7b5697765f48d81eea9d5817a8731c62c7a2a66f51a5d478a3d0971591e0c46c",
+      "annotations": {}
+    },
+    {
+      "name": "discord_emoji",
+      "description": "List, create, modify, or delete guild emojis. Create accepts a Discord data URI in body.image.",
+      "actions": [
+        "list",
+        "create",
+        "modify",
+        "delete"
+      ],
+      "schemaJsonBytes": 504,
+      "schemaSha256": "2d98b77d4f3c9e880c1a2ecd4d464d066b50576968f7b2c1451d1fb82e910740",
+      "annotations": {}
+    },
+    {
+      "name": "discord_export_snapshot",
+      "description": "Export guild metadata, roles, channels, AutoMod, onboarding, and welcome screen for planning or backup.",
+      "actions": [
+        "discord_export_snapshot"
+      ],
+      "schemaJsonBytes": 286,
+      "schemaSha256": "91387c106c86077e56194f769f40fedfdcb9c3be683d613a4cc3204e4009732a",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_forum_thread",
+      "description": "Create and manage forum posts and text-channel threads, all archive types, and thread membership.",
+      "actions": [
+        "list_active",
+        "list_archived",
+        "list_archived_private",
+        "list_joined_private",
+        "create",
+        "create_from_message",
+        "modify",
+        "delete",
+        "get_member",
+        "list_members",
+        "join",
+        "leave",
+        "add_member",
+        "remove_member"
+      ],
+      "schemaJsonBytes": 924,
+      "schemaSha256": "b888fea03812369fd23a76ffc1d8e57214ea1e535a55518e2d8620bc780933de",
+      "annotations": {}
+    },
+    {
+      "name": "discord_get_guild",
+      "description": "Read a guild and its approximate member/presence counts.",
+      "actions": [
+        "discord_get_guild"
+      ],
+      "schemaJsonBytes": 160,
+      "schemaSha256": "d9faa3c15b5f0188df2a8ae3e76a61a3f587f71d95575fd0018e34cb994e17e7",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_guild_operations",
+      "description": "Inspect extended guild state and run guarded administration operations such as pruning, incident actions, integrations, and bulk bans.",
+      "actions": [
+        "get_preview",
+        "get_role",
+        "get_role_member_counts",
+        "get_prune_count",
+        "begin_prune",
+        "list_voice_regions",
+        "list_integrations",
+        "delete_integration",
+        "get_vanity_url",
+        "bulk_ban",
+        "modify_incident_actions"
+      ],
+      "schemaJsonBytes": 1802,
+      "schemaSha256": "f55b0cb5672225fcedc9a7549e4b12bf2167ffa75885293b73a84c2f2cac1903",
+      "annotations": {}
+    },
+    {
+      "name": "discord_guild_template",
+      "description": "List, inspect, create, sync, edit, or delete guild templates without creating a new guild.",
+      "actions": [
+        "list",
+        "get",
+        "create",
+        "sync",
+        "modify",
+        "delete"
+      ],
+      "schemaJsonBytes": 556,
+      "schemaSha256": "5ca8accaf2202a96d52daca16be12e7e5a95b925e65036786af40e77e4e8b355",
+      "annotations": {}
+    },
+    {
+      "name": "discord_health",
+      "description": "Validate the active bot runtime or audit the authenticated application's public-release readiness without exposing secrets or owner data.",
+      "actions": [
+        "runtime",
+        "release_readiness"
+      ],
+      "schemaJsonBytes": 223,
+      "schemaSha256": "db8baeed13371a673f1b7ac741f3f280054fe8514ae71a014def1dc3289e7800",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_invite",
+      "description": "List, inspect, create, or delete guild invites with scoped channel verification.",
+      "actions": [
+        "list_channel",
+        "list_guild",
+        "get",
+        "create",
+        "delete"
+      ],
+      "schemaJsonBytes": 570,
+      "schemaSha256": "a8e0fd3720a8bde198edddb8fcb97e57167366950a361d5f1763b3ef2696527b",
+      "annotations": {}
+    },
+    {
+      "name": "discord_known_permissions",
+      "description": "List permission names accepted by blueprint and overwrite tools.",
+      "actions": [
+        "discord_known_permissions"
+      ],
+      "schemaJsonBytes": 85,
+      "schemaSha256": "55afd3d22cd35ef3b5e3dc2e2651ad10a586f230804ece94dcd65ac7867639fb",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "discord_list_messages",
+      "description": "Read recent messages from a channel in an allowed guild.",
+      "actions": [
+        "discord_list_messages"
+      ],
+      "schemaJsonBytes": 396,
+      "schemaSha256": "e8685eabec5c618aa59f649361c8a9ac6d61a917e24058c35c50e1ea597fe4ff",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_member_roles",
+      "description": "Add and remove multiple roles from a guild member. Role assignment is privileged and requires the one-time confirmation returned by dry-run.",
+      "actions": [
+        "discord_member_roles"
+      ],
+      "schemaJsonBytes": 526,
+      "schemaSha256": "2fc16a8a81aeae8b70c7d548c1b314ccb35ac5dff199b2ef7dab238c0c2ba50a",
+      "annotations": {}
+    },
+    {
+      "name": "discord_members",
+      "description": "Get one member or list members. Bulk listing may require the Guild Members privileged intent.",
+      "actions": [
+        "discord_members"
+      ],
+      "schemaJsonBytes": 331,
+      "schemaSha256": "3338e19e94e91e7122e21beaf103dc3680b43663577c1e2dc0fc73510d4ad96f",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_membership_screening",
+      "description": "Read or replace the Membership Screening rules shown on Discord's Access page. Updates use Discord's unstable endpoint and require full mode plus the one-time confirmation returned by dry-run.",
+      "actions": [
+        "get",
+        "update"
+      ],
+      "schemaJsonBytes": 695,
+      "schemaSha256": "86275bf5f384cac0237c40e5cd04ae622d0568ddf0647da3ad3d8b3bd3fbf3a4",
+      "annotations": {}
+    },
+    {
+      "name": "discord_message",
+      "description": "Inspect, send, edit, delete, bulk delete, crosspost, list pins, pin, or unpin messages in an allowed guild channel.",
+      "actions": [
+        "get",
+        "send",
+        "edit",
+        "delete",
+        "bulk_delete",
+        "crosspost",
+        "list_pins",
+        "pin",
+        "unpin"
+      ],
+      "schemaJsonBytes": 869,
+      "schemaSha256": "188718321cc119d6a3433780a530cde0d275d2b143c9c2e7e0fb89cbe1a30210",
+      "annotations": {}
+    },
+    {
+      "name": "discord_message_search",
+      "description": "Search indexed messages in an allowed guild. Requires the privileged Message Content intent.",
+      "actions": [
+        "discord_message_search"
+      ],
+      "schemaJsonBytes": 1408,
+      "schemaSha256": "17c76a99d134605050074ab218590fe5ef5e1cb3d374cf5fdbaa63260fdd0ccb",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_moderate_member",
+      "description": "Modify, timeout, kick, ban, or unban a guild member. Removal actions require exact confirmation.",
+      "actions": [
+        "modify",
+        "kick",
+        "ban",
+        "unban"
+      ],
+      "schemaJsonBytes": 591,
+      "schemaSha256": "a69655b6b31d7b148ff0f99f60a1e51a54362615748504227b6bd326945d2f18",
+      "annotations": {}
+    },
+    {
+      "name": "discord_modify_guild",
+      "description": "Modify guild-level settings. This is privileged and requires full mode plus the exact payload-bound confirmation returned by dry-run.",
+      "actions": [
+        "discord_modify_guild"
+      ],
+      "schemaJsonBytes": 366,
+      "schemaSha256": "689940f467e3e539235639a5fd097f9a5921aac47efe2b4063d3131e90bc018f",
+      "annotations": {}
+    },
+    {
+      "name": "discord_onboarding",
+      "description": "Get or replace guild onboarding configuration. Replacement is privileged and requires the one-time confirmation returned by dry-run.",
+      "actions": [
+        "get",
+        "update"
+      ],
+      "schemaJsonBytes": 432,
+      "schemaSha256": "cfae45fee965c07e8fc5c7ed5f5a38acbd0b08c97e33d0d0258d7c6a1a2cba26",
+      "annotations": {}
+    },
+    {
+      "name": "discord_permission_overwrite",
+      "description": "List, upsert, or delete a channel permission overwrite using named permissions. Upserts require full mode and a payload-bound dry-run confirmation; deletes retain destructive gating.",
+      "actions": [
+        "list",
+        "upsert",
+        "delete"
+      ],
+      "schemaJsonBytes": 648,
+      "schemaSha256": "9339bfd4e82d48c897de3a48a12f7411b3c586200bc71832f7b5c14c5a1ed0ae",
+      "annotations": {}
+    },
+    {
+      "name": "discord_plan_blueprint",
+      "description": "Compare a version-1 server blueprint with the live guild and return a non-destructive action plan.",
+      "actions": [
+        "discord_plan_blueprint"
+      ],
+      "schemaJsonBytes": 4090,
+      "schemaSha256": "242ce546ad69fe240f4af5b09ac59a7186e8346766f49422fb633e04e68dd83f",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "discord_poll",
+      "description": "Create a poll, list voters for one answer, or end a bot-authored poll early.",
+      "actions": [
+        "create",
+        "list_voters",
+        "end"
+      ],
+      "schemaJsonBytes": 954,
+      "schemaSha256": "1c23efcc66648f20264e6cb8ade4f21a5aff7d0774a86b36346c7ea004e2d1e5",
+      "annotations": {}
+    },
+    {
+      "name": "discord_raw_guild_request",
+      "description": "Advanced escape hatch for Discord REST endpoints not covered above. Routes are restricted to the allowed guild, verified channels, webhooks, invites, stage instances, and this bot's guild commands.",
+      "actions": [
+        "discord_raw_guild_request"
+      ],
+      "schemaJsonBytes": 504,
+      "schemaSha256": "eb1737bd9b3a9ff13ca7e6b973c9b80695a4226690a7a2c237524adc15799ef3",
+      "annotations": {}
+    },
+    {
+      "name": "discord_reaction",
+      "description": "Add, inspect, or remove reactions on a guild message, including guarded moderation cleanup.",
+      "actions": [
+        "add",
+        "remove_own",
+        "remove_user",
+        "list_users",
+        "clear_all",
+        "clear_emoji"
+      ],
+      "schemaJsonBytes": 778,
+      "schemaSha256": "3ef92b3ac62c7b1b98a67f4a8b021d4d623b197dc02a29a9efb962cb9361cd59",
+      "annotations": {}
+    },
+    {
+      "name": "discord_reorder_channels",
+      "description": "Bulk reorder channels and optionally move them between categories.",
+      "actions": [
+        "discord_reorder_channels"
+      ],
+      "schemaJsonBytes": 612,
+      "schemaSha256": "2eae7505cda484b7a3ec5a8c1e4a8bc4a40ef11ddfb0dd4ff42ee643cf9104f4",
+      "annotations": {}
+    },
+    {
+      "name": "discord_reorder_roles",
+      "description": "Bulk reorder roles below the bot's highest role.",
+      "actions": [
+        "discord_reorder_roles"
+      ],
+      "schemaJsonBytes": 502,
+      "schemaSha256": "823781a49f680d5111cb40049fdd4c1620ccfdec00b8bfc3382d7b7463cba498",
+      "annotations": {}
+    },
+    {
+      "name": "discord_scheduled_event",
+      "description": "List and manage guild scheduled events, including subscriber lookup.",
+      "actions": [
+        "list",
+        "get",
+        "create",
+        "modify",
+        "delete",
+        "list_users"
+      ],
+      "schemaJsonBytes": 730,
+      "schemaSha256": "e064c408dc7cabab4801e1f54016f1e6b5c297a94af6f0b79696fad104db2ed2",
+      "annotations": {}
+    },
+    {
+      "name": "discord_set_channel_permission",
+      "description": "Create or replace a role/member permission overwrite. Requires full mode and the exact payload-bound confirmation returned by dry-run.",
+      "actions": [
+        "discord_set_channel_permission"
+      ],
+      "schemaJsonBytes": 602,
+      "schemaSha256": "907ac63a2e1515819883134b88fc71707424d6b1a779d18c833da43147bdc7a8",
+      "annotations": {}
+    },
+    {
+      "name": "discord_soundboard",
+      "description": "List, create, edit, delete, or play Discord soundboard sounds with file-size validation.",
+      "actions": [
+        "list_default",
+        "list_guild",
+        "get",
+        "create",
+        "modify",
+        "delete",
+        "send"
+      ],
+      "schemaJsonBytes": 894,
+      "schemaSha256": "e67c8e21b342746f1cba765b34ef6dc650d0fe127fc94271ba655c60f3954c0e",
+      "annotations": {}
+    },
+    {
+      "name": "discord_stage_instance",
+      "description": "Read, start, update, or end the live Stage instance associated with an allowed guild channel.",
+      "actions": [
+        "get",
+        "create",
+        "modify",
+        "delete"
+      ],
+      "schemaJsonBytes": 623,
+      "schemaSha256": "0e5d19eb51d5135047567cef446c4f8cbbc6f9bf3cd28d7874903b84a0a3c135",
+      "annotations": {}
+    },
+    {
+      "name": "discord_sticker",
+      "description": "List, inspect, create, edit, or delete guild stickers, including validated multipart uploads.",
+      "actions": [
+        "list",
+        "get",
+        "create",
+        "modify",
+        "delete"
+      ],
+      "schemaJsonBytes": 650,
+      "schemaSha256": "2cb40bf75426463ab2677b651bde06980e123123fda5d1ff8c3162687c2c3060",
+      "annotations": {}
+    },
+    {
+      "name": "discord_upsert_channel",
+      "description": "Create or modify any guild channel type. Bodies containing permission_overwrites are privileged and require full mode plus the dry-run confirmation.",
+      "actions": [
+        "discord_upsert_channel"
+      ],
+      "schemaJsonBytes": 421,
+      "schemaSha256": "3c9d9bbbdb4a92f60c63086345e2b2245d0fc77ccb694d921b892d078503e5aa",
+      "annotations": {}
+    },
+    {
+      "name": "discord_upsert_role",
+      "description": "Create or modify a guild role. Changing permissions is privileged and requires full mode plus the dry-run confirmation; role hierarchy still applies.",
+      "actions": [
+        "discord_upsert_role"
+      ],
+      "schemaJsonBytes": 418,
+      "schemaSha256": "ec76cbc708dc57880f615a633b3d569536f95a7615bbc8bbb58b1de1b7b2012b",
+      "annotations": {}
+    },
+    {
+      "name": "discord_voice_member",
+      "description": "Inspect or change a guild member's voice placement, server mute, or server deaf state.",
+      "actions": [
+        "get",
+        "move",
+        "disconnect",
+        "set_mute",
+        "set_deaf"
+      ],
+      "schemaJsonBytes": 518,
+      "schemaSha256": "8e0f757e933956174212753fa5fa72a8f5be25f1497be815dc0642151b5afd8d",
+      "annotations": {}
+    },
+    {
+      "name": "discord_webhook",
+      "description": "Manage guild-owned webhooks and execute one without returning its token or URL. Lifecycle changes are privileged; deletion retains destructive gating.",
+      "actions": [
+        "list_channel",
+        "list_guild",
+        "get",
+        "create",
+        "modify",
+        "delete",
+        "execute"
+      ],
+      "schemaJsonBytes": 696,
+      "schemaSha256": "1f220568770e1635dbd4474f498911f5ccb09334e8c1224dcd592f7a1029cb10",
+      "annotations": {}
+    },
+    {
+      "name": "discord_welcome_screen",
+      "description": "Get or modify the Community welcome screen.",
+      "actions": [
+        "get",
+        "update"
+      ],
+      "schemaJsonBytes": 404,
+      "schemaSha256": "97b9331f49b373dd1b31747e539bcc5a6ed8a1cf8498711ad531c2fec04f46df",
+      "annotations": {}
+    },
+    {
+      "name": "discord_widget",
+      "description": "Read or modify the public guild widget and return a widget image URL without downloading binary data.",
+      "actions": [
+        "get_settings",
+        "get_widget",
+        "modify_settings",
+        "image_url"
+      ],
+      "schemaJsonBytes": 564,
+      "schemaSha256": "c6b52df46142ba6003f492c30cdcc6c8e4e223f9927fd0e115ac17351815f475",
+      "annotations": {}
+    }
+  ]
+}

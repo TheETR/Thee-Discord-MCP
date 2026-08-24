@@ -1,6 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { changeDigest } from "./confirmation.js";
 import type { DiscordClient } from "./discord.js";
 import { permissionBits } from "./permissions.js";
 import { jsonResult } from "./results.js";
@@ -18,6 +19,7 @@ interface WriteRequest {
   body?: unknown;
   reason?: string;
   destructive?: boolean;
+  risk?: "ordinary" | "privileged" | "destructive";
   confirm?: string;
   expectedConfirmation?: string;
   auth?: boolean;
@@ -25,17 +27,22 @@ interface WriteRequest {
 }
 
 async function runWrite(client: DiscordClient, input: WriteRequest) {
-  const preview = {
-    dryRun: true,
-    method: input.method,
-    route: input.displayRoute ?? input.route,
-    ...(input.body === undefined ? {} : { body: input.body }),
-    ...(input.expectedConfirmation === undefined ? {} : { expectedConfirmation: input.expectedConfirmation })
-  };
-  if (input.dryRun) return jsonResult(preview);
+  if (input.dryRun) {
+    const expectedConfirmation = input.expectedConfirmation === undefined
+      ? undefined
+      : client.policy.issueConfirmation(input.expectedConfirmation);
+    return jsonResult({
+      dryRun: true,
+      method: input.method,
+      route: input.displayRoute ?? input.route,
+      ...(input.body === undefined ? {} : { body: input.body }),
+      ...(expectedConfirmation === undefined ? {} : { expectedConfirmation })
+    });
+  }
   client.policy.assertWrite({
     operation: input.operation,
     destructive: input.destructive,
+    risk: input.risk,
     confirmation: input.confirm,
     expectedConfirmation: input.expectedConfirmation
   });
@@ -91,47 +98,71 @@ export function membershipScreeningBody(input: {
   return body;
 }
 
+export const capabilityFamilies = {
+  system: ["discord_health.runtime", "discord_health.release_readiness", "discord_capabilities", "discord_known_permissions"],
+  snapshots: ["discord_export_snapshot", "discord_plan_blueprint", "discord_apply_blueprint", "discord_raw_guild_request"],
+  directory: ["discord_directory.list_channels", "discord_directory.find_channels", "discord_directory.list_roles", "discord_directory.search_members", "discord_directory.list_bans", "discord_directory.get_ban"],
+  channels: ["discord_upsert_channel", "discord_reorder_channels", "discord_delete_channel", "discord_permission_overwrite", "discord_channel_operations"],
+  roles: ["discord_upsert_role", "discord_reorder_roles", "discord_delete_role", "discord_member_roles"],
+  messages: ["discord_list_messages", "discord_message.get", "discord_message.send", "discord_message.edit", "discord_message.delete", "discord_message.crosspost", "discord_message.list_pins", "discord_message.pin", "discord_message.unpin", "discord_message.bulk_delete", "discord_message_search"],
+  members: ["discord_members", "discord_moderate_member", "discord_voice_member"],
+  reactions: ["discord_reaction.add", "discord_reaction.remove_own", "discord_reaction.remove_user", "discord_reaction.list_users", "discord_reaction.clear_all", "discord_reaction.clear_emoji"],
+  webhooks: ["discord_webhook.list_channel", "discord_webhook.list_guild", "discord_webhook.get", "discord_webhook.create", "discord_webhook.modify", "discord_webhook.delete", "discord_webhook.execute"],
+  invites: ["discord_invite.list_channel", "discord_invite.list_guild", "discord_invite.get", "discord_invite.create", "discord_invite.delete"],
+  scheduled_events: ["discord_scheduled_event.list", "discord_scheduled_event.get", "discord_scheduled_event.create", "discord_scheduled_event.modify", "discord_scheduled_event.delete", "discord_scheduled_event.list_users"],
+  forum_threads: ["discord_forum_thread.list_active", "discord_forum_thread.list_archived", "discord_forum_thread.list_archived_private", "discord_forum_thread.list_joined_private", "discord_forum_thread.create", "discord_forum_thread.create_from_message", "discord_forum_thread.modify", "discord_forum_thread.delete", "discord_forum_thread.get_member", "discord_forum_thread.list_members", "discord_forum_thread.join", "discord_forum_thread.leave", "discord_forum_thread.add_member", "discord_forum_thread.remove_member"],
+  community_configuration: ["discord_membership_screening", "discord_automod", "discord_onboarding", "discord_welcome_screen", "discord_audit_log"],
+  voice: ["discord_voice_member", "discord_stage_instance", "discord_soundboard.send", "discord_channel_operations.set_voice_status"],
+  expressions: ["discord_emoji", "discord_sticker", "discord_soundboard", "discord_application_assets"],
+  polls: ["discord_poll.create", "discord_poll.list_voters", "discord_poll.end"],
+  guild_templates: ["discord_guild_template.list", "discord_guild_template.get", "discord_guild_template.create", "discord_guild_template.sync", "discord_guild_template.modify", "discord_guild_template.delete"],
+  application_commands: ["discord_application_command.list", "discord_application_command.get", "discord_application_command.upsert", "discord_application_command.modify", "discord_application_command.delete", "discord_application_command.bulk_overwrite"],
+  application_profile: ["discord_current_bot_profile", "discord_current_application", "discord_application_assets"],
+  guild_configuration: ["discord_get_guild", "discord_modify_guild", "discord_widget", "discord_guild_operations"],
+  direct_messages: ["discord_dm.open", "discord_dm.list", "discord_dm.get", "discord_dm.send", "discord_dm.edit", "discord_dm.delete"]
+} as const;
+
+export function searchCapabilityFamilies(query?: string, family?: string) {
+  const entries = Object.entries(capabilityFamilies);
+  if (family !== undefined && !(family in capabilityFamilies)) {
+    throw new Error(`Unknown capability family '${family}'. Available families: ${Object.keys(capabilityFamilies).join(", ")}.`);
+  }
+  const selected = family === undefined ? entries : entries.filter(([name]) => name === family);
+  const terms = query?.trim().toLowerCase().split(/\s+/).filter(Boolean) ?? [];
+  return Object.fromEntries(selected.flatMap(([name, capabilities]) => {
+    const matches = terms.length === 0
+      ? [...capabilities]
+      : capabilities.filter((capability) => terms.every((term) => `${name} ${capability}`.toLowerCase().includes(term)));
+    return matches.length === 0 ? [] : [[name, matches]];
+  }));
+}
+
 export function registerAdvancedTools(args: { server: McpServer; client: DiscordClient }) {
   const { server, client } = args;
 
   server.registerTool(
     "discord_capabilities",
     {
-      description: "Describe named Discord operations and their safety requirements without making a network request.",
-      inputSchema: {}
+      description: "Describe or search named Discord operation families and their safety requirements without making a network request.",
+      inputSchema: {
+        query: z.string().trim().min(1).max(100).optional(),
+        family: z.string().trim().min(1).max(100).optional()
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
     },
-    async () => jsonResult({
+    async ({ query, family }) => jsonResult({
       transport: "stdio",
       inventory: {
         mcpTools: 49,
-        schemaDeclaredOperations: 166,
+        schemaDeclaredOperations: 168,
         grouping: "Related operations share an action-based MCP tool instead of becoming separate tools."
       },
-      safety: ["guild allowlist", "read-only/safe-write/full modes", "dry-run by default", "exact destructive confirmations", "bulk limits", "audit reasons"],
-      families: {
-        directory: ["list_channels", "find_channels", "list_roles", "search_members", "list_bans", "get_ban"],
-        messages: ["get", "send", "edit", "delete", "crosspost", "list_pins", "pin", "unpin", "bulk_delete"],
-        reactions: ["add", "remove_own", "remove_user", "list_users", "clear_all", "clear_emoji"],
-        webhooks: ["list_channel", "list_guild", "get", "create", "modify", "delete", "execute"],
-        invites: ["list_channel", "list_guild", "get", "create", "delete"],
-        scheduled_events: ["list", "get", "create", "modify", "delete", "list_users"],
-        forum_threads: ["list_active", "list_archived", "list_archived_private", "list_joined_private", "create", "create_from_message", "modify", "delete", "get_member", "list_members", "join", "leave", "add_member", "remove_member"],
-        voice_members: ["get", "move", "disconnect", "set_mute", "set_deaf"],
-        permission_overwrites: ["list", "upsert", "delete"],
-        membership_screening: ["get", "update"],
-        stage_instances: ["get", "create", "modify", "delete"],
-        soundboard: ["list_default", "list_guild", "get", "create", "modify", "delete", "send"],
-        stickers: ["list", "get", "create", "modify", "delete"],
-        polls: ["create", "list_voters", "end"],
-        message_search: ["search"],
-        guild_templates: ["list", "get", "create", "sync", "modify", "delete"],
-        application_commands: ["list", "get", "upsert", "modify", "delete", "bulk_overwrite"],
-        widget: ["get_settings", "get_widget", "modify_settings", "image_url"],
-        guild_operations: ["get_preview", "get_role", "get_role_member_counts", "get_prune_count", "begin_prune", "list_voice_regions", "list_integrations", "delete_integration", "get_vanity_url", "bulk_ban", "modify_incident_actions"],
-        channel_operations: ["get", "follow_announcement", "trigger_typing", "set_voice_status"],
-        direct_messages: ["open", "list", "get", "send", "edit", "delete"],
-        application_assets: ["list_emojis", "get_emoji", "create_emoji", "modify_emoji", "delete_emoji", "get_role_connection_metadata", "update_role_connection_metadata"]
+      safety: ["guild allowlist", "ordinary/privileged/destructive write risk levels", "read-only/safe-write/full modes", "dry-run by default", "one-time expiring payload-bound confirmations", "bulk limits", "audit reasons"],
+      platformLimits: {
+        serverProfileTraits: "Discord exposes this setting only to signed-in users. Bot tokens receive 'Bots cannot use this endpoint', so this server does not attempt unsupported user-token automation."
       },
+      filters: { query: query ?? null, family: family ?? null },
+      families: searchCapabilityFamilies(query, family),
       note: "The raw guild request remains available for allowlist-scoped Discord REST endpoints not yet named."
     })
   );
@@ -139,7 +170,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_membership_screening",
     {
-      description: "Read or replace the Membership Screening rules shown on Discord's Access page. Updates use Discord's unstable endpoint and require full mode plus exact confirmation.",
+      description: "Read or replace the Membership Screening rules shown on Discord's Access page. Updates use Discord's unstable endpoint and require full mode plus the one-time confirmation returned by dry-run.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["get", "update"]),
@@ -167,7 +198,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       if (Object.keys(body).length === 0) {
         throw new Error("update requires enabled, description, or rules.");
       }
-      const expected = `UPDATE SERVER RULES ${guildId}`;
+      const expected = `UPDATE SERVER RULES ${guildId} ${changeDigest(body)}`;
       return runWrite(client, {
         method: "PATCH",
         route,
@@ -196,7 +227,8 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         limit: z.number().int().min(1).max(1000).default(100),
         before: Snowflake.optional(),
         after: Snowflake.optional()
-      }
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
     },
     async ({ guildId, action, query, channelType, parentId, userId, limit, before, after }) => {
       client.policy.assertGuild(guildId);
@@ -255,7 +287,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       }
       if (action === "remove_user") {
         const selectedUser = required(userId, "userId");
-        const expected = `REMOVE REACTION ${selectedUser} ${channelId}/${messageId}`;
+        const expected = `REMOVE REACTION ${selectedUser} ${channelId}/${messageId} ${changeDigest({ emoji: selectedEmoji })}`;
         return runWrite(client, { method: "DELETE", route: `${route}/${selectedUser}`, operation: "remove user reaction", dryRun, destructive: true, confirm, expectedConfirmation: expected });
       }
       if (action === "clear_emoji") {
@@ -274,7 +306,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_webhook",
     {
-      description: "Manage guild-owned webhooks and execute one without returning its token or URL.",
+      description: "Manage guild-owned webhooks and execute one without returning its token or URL. Lifecycle changes are privileged; deletion retains destructive gating.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["list_channel", "list_guild", "get", "create", "modify", "delete", "execute"]),
@@ -295,13 +327,18 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
         const selectedChannel = required(channelId, "channelId");
         await client.assertChannelGuild(selectedChannel, guildId);
         if (action === "list_channel") return jsonResult(redactWebhookSecrets(await client.request("GET", `/channels/${selectedChannel}/webhooks`)));
+        const createBody = { name: required(name, "name") };
+        const expected = `CREATE WEBHOOK ${selectedChannel} ${changeDigest(createBody)}`;
         const result = await runWrite(client, {
           method: "POST",
           route: `/channels/${selectedChannel}/webhooks`,
           operation: "create webhook",
-          body: { name: required(name, "name") },
+          body: createBody,
           reason,
-          dryRun
+          dryRun,
+          risk: "privileged",
+          confirm,
+          expectedConfirmation: expected
         });
         if (dryRun) return result;
         const parsed = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "{}") as unknown;
@@ -312,7 +349,19 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       if (action === "get") return jsonResult(redactWebhookSecrets(await client.request("GET", `/webhooks/${selectedWebhook}`)));
       if (action === "modify") {
         if (typeof body?.channel_id === "string") await client.assertChannelGuild(body.channel_id, guildId);
-        const result = await runWrite(client, { method: "PATCH", route: `/webhooks/${selectedWebhook}`, operation: "modify webhook", body: required(body, "body"), reason, dryRun });
+        const modifyBody = required(body, "body");
+        const expected = `MODIFY WEBHOOK ${selectedWebhook} ${changeDigest(modifyBody)}`;
+        const result = await runWrite(client, {
+          method: "PATCH",
+          route: `/webhooks/${selectedWebhook}`,
+          operation: "modify webhook",
+          body: modifyBody,
+          reason,
+          dryRun,
+          risk: "privileged",
+          confirm,
+          expectedConfirmation: expected
+        });
         if (dryRun) return result;
         const parsed = JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "{}") as unknown;
         return jsonResult(redactWebhookSecrets(parsed));
@@ -516,7 +565,7 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
   server.registerTool(
     "discord_permission_overwrite",
     {
-      description: "List, upsert, or delete a channel permission overwrite using named Discord permissions.",
+      description: "List, upsert, or delete a channel permission overwrite using named permissions. Upserts require full mode and a payload-bound dry-run confirmation; deletes retain destructive gating.",
       inputSchema: {
         guildId: Snowflake,
         action: z.enum(["list", "upsert", "delete"]),
@@ -539,13 +588,18 @@ export function registerAdvancedTools(args: { server: McpServer; client: Discord
       const selectedTarget = required(targetId, "targetId");
       const route = `/channels/${channelId}/permissions/${selectedTarget}`;
       if (action === "upsert") {
+        const body = { type: required(targetType, "targetType") === "role" ? 0 : 1, allow: permissionBits(allow), deny: permissionBits(deny) };
+        const expected = `UPSERT CHANNEL PERMISSION ${channelId}/${selectedTarget} ${changeDigest(body)}`;
         return runWrite(client, {
           method: "PUT",
           route,
           operation: "upsert permission overwrite",
-          body: { type: required(targetType, "targetType") === "role" ? 0 : 1, allow: permissionBits(allow), deny: permissionBits(deny) },
+          body,
           reason,
-          dryRun
+          dryRun,
+          risk: "privileged",
+          confirm,
+          expectedConfirmation: expected
         });
       }
       const expected = `DELETE CHANNEL PERMISSION ${channelId}/${selectedTarget}`;
