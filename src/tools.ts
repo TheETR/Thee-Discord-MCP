@@ -10,7 +10,7 @@ import { registerCoverageTools } from "./coverage-tools.js";
 import type { DiscordClient } from "./discord.js";
 import { registerExtraTools } from "./extra-tools.js";
 import { knownPermissionNames, permissionBits } from "./permissions.js";
-import { evaluateReleaseReadiness } from "./readiness.js";
+import { evaluateReleaseReadiness, guildMemberRoute } from "./readiness.js";
 import { jsonResult } from "./results.js";
 import type { StateStore } from "./state.js";
 
@@ -67,7 +67,7 @@ export function registerTools(args: {
       const [application, guild, member, roles, guildCommands, globalCommands] = await Promise.all([
         client.request<Record<string, unknown>>("GET", "/oauth2/applications/@me"),
         client.request<Record<string, unknown>>("GET", `/guilds/${guildId}`),
-        client.request<Record<string, unknown>>("GET", `/guilds/${guildId}/members/@me`),
+        client.request<Record<string, unknown>>("GET", guildMemberRoute(guildId, applicationId)),
         client.request<Array<Record<string, unknown>>>("GET", `/guilds/${guildId}/roles`),
         client.request<Array<Record<string, unknown>>>("GET", `/applications/${applicationId}/guilds/${guildId}/commands`),
         client.request<Array<Record<string, unknown>>>("GET", `/applications/${applicationId}/commands`)

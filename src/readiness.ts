@@ -55,6 +55,10 @@ const ADMINISTRATION_PERMISSIONS = [
   "ManageGuildExpressions"
 ] as const;
 
+export function guildMemberRoute(guildId: string, userId: string): string {
+  return `/guilds/${guildId}/members/${userId}`;
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>

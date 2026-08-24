@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { permissionBits } from "../src/permissions.js";
-import { evaluateReleaseReadiness, type ReleaseReadinessInput } from "../src/readiness.js";
+import { evaluateReleaseReadiness, guildMemberRoute, type ReleaseReadinessInput } from "../src/readiness.js";
 
 const guildId = "123456789012345678";
 const applicationId = "234567890123456789";
@@ -30,6 +30,12 @@ function readyInput(): ReleaseReadinessInput {
 }
 
 describe("public release readiness", () => {
+  it("queries the current bot member by snowflake instead of the unsupported @me alias", () => {
+    expect(guildMemberRoute(guildId, applicationId)).toBe(
+      `/guilds/${guildId}/members/${applicationId}`
+    );
+  });
+
   it("passes automated checks without claiming manual acceptance", () => {
     const result = evaluateReleaseReadiness(readyInput());
     expect(result.automatedChecksPassed).toBe(true);
