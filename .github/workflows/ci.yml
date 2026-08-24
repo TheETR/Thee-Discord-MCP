@@ -21,7 +21,7 @@ jobs:
         with:
           version: 11.10.0
           run_install: false
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 20.19
           cache: pnpm
