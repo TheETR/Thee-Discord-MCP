@@ -13,6 +13,10 @@ This project follows Semantic Versioning. Public release notes describe external
 - Blueprint execution journals, restart-aware recovery, and deterministic message nonces.
 - CodeQL, Dependabot configuration, and tag-driven GitHub release evidence with checksums and a CycloneDX SBOM.
 
+### Fixed
+
+- Public-release readiness now requests the current bot's guild member by its Discord ID instead of the unsupported `@me` alias.
+
 ### Security
 
 - One-time expiring confirmations bind high-impact writes to their exact payload and target set.
