@@ -53,7 +53,7 @@
   "dependencies": {
     "@discordjs/rest": "^2.6.3",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "discord-api-types": "^0.38.52",
+    "discord-api-types": "^0.38.53",
     "dotenv": "^17.2.3",
     "zod": "^4.4.3"
   },
